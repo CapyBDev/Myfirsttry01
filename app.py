@@ -127,21 +127,24 @@ def allowed_photo(filename):
 #     )
 #     return conn
 
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import os
+
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    database_url = os.environ.get("DATABASE_URL")
+
+    if database_url:
+        return psycopg2.connect(
+            database_url,
+            sslmode="require",
+            cursor_factory=RealDictCursor
+        )
+
+    # fallback for local
+    conn = sqlite3.connect("database.db")
     conn.row_factory = sqlite3.Row
     return conn
-
-# ✅ AUDIT LOG FUNCTION
-def add_log(leave_id, user_id, action, description):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO leave_logs (leave_id, action, performed_by, timestamp, description)
-        VALUES (?,?,?,?,?)
-    """, (leave_id, action, user_id, datetime.utcnow().isoformat(), description))
-    conn.commit()
-    conn.close()
 
 
 def _add_column_if_missing(cur, table, name, coltype):
