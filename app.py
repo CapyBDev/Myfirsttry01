@@ -23,15 +23,12 @@ from email.message import EmailMessage
 from uuid import uuid4
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
 
 PAGE_SIZE = landscape(A4)
 app = Flask(__name__)
 
-
-app.secret_key = os.environ.get("SECRET_KEY", "dev-key")
+app.secret_key = "super_secret_key_change_me"
 
 # === Upload config untuk dokumen sokongan leave ===
 LEAVE_UPLOAD_FOLDER = os.path.join("static", "uploads", "leave_docs")
@@ -49,7 +46,6 @@ os.makedirs(PROFILE_UPLOAD_FOLDER, exist_ok=True)
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif"}
 
 app.config["PROFILE_UPLOAD_FOLDER"] = PROFILE_UPLOAD_FOLDER
-
 
 def allowed_leave_file(filename):
     return (
@@ -90,6 +86,29 @@ def calculate_working_days(start_date, end_date):
         current += timedelta(days=1)
     return count
 
+def get_used_leave_days(user_id, year=None):
+    conn = get_db()
+    c = conn.cursor()
+
+    sql = """
+        SELECT COALESCE(SUM(total_days), 0)
+        FROM leave_applications
+        WHERE user_id = ?
+          AND status = 'Approved'
+          AND leave_type != 'MC'
+    """
+    params = [user_id]
+
+    if year:
+        sql += " AND strftime('%Y', start_date) = ?"
+        params.append(str(year))
+
+    c.execute(sql, params)
+    used = c.fetchone()[0]
+    conn.close()
+
+    return used
+
 def get_next_position(position):
     """Return next higher position for approval or checking chain."""
     return POSITION_HIERARCHY.get(position, None)
@@ -107,24 +126,11 @@ def allowed_photo(filename):
 #         cursor_factory=RealDictCursor
 #     )
 #     return conn
+
 def get_db():
-    database_url = os.environ.get("DATABASE_URL")
-
-    if not database_url:
-        raise RuntimeError("DATABASE_URL is not set")
-
-    # Fix Render postgres:// issue
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-
-    conn = psycopg2.connect(
-        database_url,
-        sslmode="require",
-        cursor_factory=RealDictCursor
-    )
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     return conn
-
-
 
 # ✅ AUDIT LOG FUNCTION
 def add_log(leave_id, user_id, action, description):
@@ -463,24 +469,24 @@ def login():
         user = c.fetchone()
         conn.close()
 
-        # ❌ User not found
+        # User not found
         if not user:
             session["login_attempts"] += 1
             flash("Invalid username or password.", "danger")
             return redirect(url_for("login"))
 
-        # 🚫 User resigned (treated as not exist)
+        # User resigned (treated as not exist)
         if user["availability"] == "Resign":
             flash("Your account is no longer active. Please contact admin.", "danger")
             return redirect(url_for("login"))
 
-        # ❌ Wrong password
+        # Wrong password
         if not check_password_hash(user["password_hash"], password):
             session["login_attempts"] += 1
             flash("Invalid username or password.", "danger")
             return redirect(url_for("login"))
 
-        # ✅ success
+        # success
         session["login_attempts"] = 0
         session.update({
             "user_id": user["id"],
@@ -883,7 +889,8 @@ def download_individual_leave_pdf(user_id):
 
 @app.route("/leave-report/<int:user_id>/<string:format>")
 def download_individual_leave_report(user_id, format):
-    conn = get_db()
+    conn = sqlite3.connect("database.db")
+    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
     cur.execute("""
@@ -896,16 +903,11 @@ def download_individual_leave_report(user_id, format):
         FROM leaves l
         JOIN users u ON u.id = l.user_id
         LEFT JOIN departments d ON u.department_id = d.id
-        WHERE u.id = %s AND l.status = 'Approved'
+        WHERE u.id = ? AND l.status = 'Approved'
         ORDER BY l.start_date
     """, (user_id,))
-
     rows = cur.fetchall()
     conn.close()
-
-    if not rows:
-        flash("No approved leave records found.", "warning")
-        return redirect(url_for("dashboard"))
 
     if format == "excel":
         import pandas as pd
@@ -917,8 +919,7 @@ def download_individual_leave_report(user_id, format):
         return send_file(
             output,
             download_name="leave_report.xlsx",
-            as_attachment=True,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            as_attachment=True
         )
 
     # ===== PDF =====
@@ -1826,14 +1827,18 @@ def manage_leaves():
             params.append(selected_department)
 
         cur.execute(f"""
-            SELECT u.id AS user_id, u.full_name, la.leave_type,
-                   la.start_date, la.end_date, u.entitlement
+            SELECT u.id AS user_id,
+                u.full_name,
+                la.leave_type,
+                la.start_date,
+                la.end_date,
+                u.entitlement
             FROM leave_applications la
             JOIN users u ON u.id = la.user_id
             LEFT JOIN departments d ON u.department_id = d.id
-            WHERE la.status='Approved'
-              AND strftime('%Y', la.start_date)=?
-              {dept_filter}
+            WHERE la.status = 'Approved'
+            AND strftime('%Y', la.start_date) = ?
+            {dept_filter}
             ORDER BY u.full_name, la.start_date
         """, params)
 
@@ -1843,58 +1848,52 @@ def manage_leaves():
         for r in rows:
             uid = r["user_id"]
 
+            # ===== INIT USER (FIXED ENTITLEMENT) =====
             if uid not in users:
                 users[uid] = {
                     "user_id": uid,
                     "name": r["full_name"],
-                    "monthly": {m:0 for m in MONTH_MAP.values()},
-                    "monthly_details": {},
-                    "leave_type_details": {},
+                    "entitlement": r["entitlement"] or 0,
                     "total_used": 0,
-                    "remaining": r["entitlement"] or 0
+                    "monthly": {m: 0 for m in MONTH_MAP.values()},
+                    "monthly_details": {},
+                    "leave_type_details": {}
                 }
 
+            # ❌ MC DOES NOT AFFECT ENTITLEMENT
             if r["leave_type"] == "MC":
                 continue
 
-            start = datetime.strptime(r["start_date"], "%Y-%m-%d")
-            end   = datetime.strptime(r["end_date"], "%Y-%m-%d")
-
+            # ===== CALCULATE WORKING DAYS =====
             days = calculate_working_days(r["start_date"], r["end_date"])
 
+            start = datetime.strptime(r["start_date"], "%Y-%m-%d")
             m = MONTH_MAP[start.strftime("%m")]
 
-            # monthly count
+            # ===== ACCUMULATE USED =====
             users[uid]["monthly"][m] += days
             users[uid]["total_used"] += days
-            users[uid]["remaining"] -= days
 
-            # ============================
-            # BUILD monthly_details (for modal popup)
-            # ============================
-            if m not in users[uid]["monthly_details"]:
-                users[uid]["monthly_details"][m] = {}
-
-            if r["leave_type"] not in users[uid]["monthly_details"][m]:
-                users[uid]["monthly_details"][m][r["leave_type"]] = []
-
+            # ===== MONTHLY DETAILS =====
+            users[uid]["monthly_details"].setdefault(m, {})
+            users[uid]["monthly_details"][m].setdefault(r["leave_type"], [])
             users[uid]["monthly_details"][m][r["leave_type"]].append({
                 "start": r["start_date"],
                 "end": r["end_date"],
                 "days": days
             })
 
-            # ============================
-            # BUILD leave_type_details (for TOTAL popup)
-            # ============================
-            if r["leave_type"] not in users[uid]["leave_type_details"]:
-                users[uid]["leave_type_details"][r["leave_type"]] = []
-
+            # ===== LEAVE TYPE DETAILS =====
+            users[uid]["leave_type_details"].setdefault(r["leave_type"], [])
             users[uid]["leave_type_details"][r["leave_type"]].append({
                 "start": r["start_date"],
                 "end": r["end_date"],
                 "days": days
             })
+
+        # ===== FINAL BALANCE CALCULATION (SAFE) =====
+        for u in users.values():
+            u["remaining"] = max(0, u["entitlement"] - u["total_used"])
 
         leave_report = list(users.values())
 
@@ -2155,6 +2154,7 @@ def build_leave_matrix(rows):
             report[uid] = {
                 "user_id": uid,
                 "name": r["full_name"],
+                "entitlement": r["entitlement"] or 0,
                 "leaves": []
             }
 
@@ -2167,17 +2167,21 @@ def build_leave_matrix(rows):
             leave = {
                 "leave_type": r["leave_type"],
                 "months": {m: 0.0 for m in MONTHS},
-                "total_used": 0.0,
-                "remaining": r["entitlement"] or 0
+                "total_used": 0.0
             }
             report[uid]["leaves"].append(leave)
 
         month_name = MONTHS[r["month_no"] - 1]
         leave["months"][month_name] += r["days_used"]
         leave["total_used"] += r["days_used"]
-        leave["remaining"] = max(0, leave["remaining"] - r["days_used"])
+
+    # ✅ FINAL CALCULATION (SAFE)
+    for u in report.values():
+        used = sum(l["total_used"] for l in u["leaves"])
+        u["remaining"] = max(0, u["entitlement"] - used)
 
     return list(report.values())
+
 
 @app.route("/download/leave-report/excel")
 def download_leave_report_excel():
@@ -2811,13 +2815,20 @@ def user_dashboard():
     entitlement = c.fetchone()["entitlement"] or 0
 
     c.execute("""
-        SELECT SUM(julianday(end_date) - julianday(start_date) + 1) AS used_days
+        SELECT start_date, end_date
         FROM leave_applications
-        WHERE user_id=? AND status='Approved'
+        WHERE user_id = ?
+        AND status = 'Approved'
+        AND leave_type != 'MC'
     """, (user_id,))
-    used = c.fetchone()["used_days"] or 0
 
-    balance = entitlement - used
+    rows = c.fetchall()
+
+    used = 0
+    for r in rows:
+        used += calculate_working_days(r["start_date"], r["end_date"])
+
+    balance = max(0, entitlement - used)
 
 
     # ===================== MY OWN LEAVES =====================
@@ -3098,24 +3109,18 @@ def apply_leave():
         flash("Leave submitted successfully.", "success")
         return redirect(url_for("user_dashboard"))
 
-    # ================= GET REMAINING LEAVE =================
+    # ================= GET REMAINING LEAVE (FIXED) =================
 
-    # get entitlement
+    # get entitlement (FIXED VALUE)
     cur.execute("SELECT entitlement FROM users WHERE id=?", (user_id,))
     user = cur.fetchone()
     entitlement = user["entitlement"] or 0
 
-    # get used leave
-    cur.execute("""
-        SELECT COALESCE(SUM(total_days),0) AS used_days
-        FROM leave_applications
-        WHERE user_id=?
-        AND status='Approved'
-    """, (user_id,))
+    # get used leave (SINGLE SOURCE OF TRUTH)
+    used_leave = get_used_leave_days(user_id)
 
-    used_leave = cur.fetchone()["used_days"]
-
-    remaining_leave = entitlement - used_leave
+    # calculate balance
+    remaining_leave = max(0, entitlement - used_leave)
 
     conn.close()
 
@@ -3230,12 +3235,12 @@ def approve_leave_action(leave_id):
     """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
 
     # ✅ Deduct entitlement (NOT MC)
-    if leave["leave_type"] != "MC":
-        c.execute("""
-            UPDATE users
-            SET entitlement = entitlement - ?
-            WHERE id = ?
-        """, (leave["total_days"], leave["user_id"]))
+    # if leave["leave_type"] != "MC":
+    #     c.execute("""
+    #         UPDATE users
+    #         SET entitlement = entitlement - ?
+    #         WHERE id = ?
+    #     """, (leave["total_days"], leave["user_id"]))
 
     conn.commit()
     conn.close()
@@ -3338,6 +3343,7 @@ def profile():
     conn = get_db()
     c = conn.cursor()
 
+    # ================= POST: UPDATE PASSWORD =================
     if request.method == "POST":
         password = request.form.get("password", "").strip()
 
@@ -3352,9 +3358,7 @@ def profile():
         flash("Profile updated successfully.", "success")
         return redirect(url_for("profile"))
 
-    # ============================
-    # GET USER DATA
-    # ============================
+    # ================= GET USER DATA =================
     c.execute("""
         SELECT u.*, d.name AS department_name
         FROM users u
@@ -3363,20 +3367,12 @@ def profile():
     """, (session["user_id"],))
     user = c.fetchone()
 
-    # ============================
-    # CALCULATE USED LEAVE
-    # ============================
-    c.execute("""
-        SELECT COALESCE(SUM(total_days),0) AS used_days
-        FROM leave_applications
-        WHERE user_id=?
-        AND status='Approved'
-    """, (session["user_id"],))
-
-    used_leave = c.fetchone()["used_days"]
-
     entitlement = user["entitlement"] or 0
-    remaining_leave = entitlement - used_leave
+
+    # ================= CALCULATE USED LEAVE (FIXED) =================
+    used_leave = get_used_leave_days(session["user_id"])
+
+    remaining_leave = max(0, entitlement - used_leave)
 
     conn.close()
 
@@ -3384,7 +3380,8 @@ def profile():
         "profile.html",
         user=user,
         remaining_leave=remaining_leave,
-        hide_balance=user["role"].upper() in ["ADMIN","CEO"] or user["position"].upper()=="CEO"
+        hide_balance=user["role"].upper() in ["ADMIN", "CEO"]
+                     or (user["position"] or "").upper() == "CEO"
     )
 
 
@@ -3630,22 +3627,16 @@ def debug_leaves():
     return out
 
 def get_departments():
-    conn = get_db()
+    conn = sqlite3.connect("database.db")
+    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT DISTINCT d.name
-        FROM departments d
-        JOIN users u ON u.department_id = d.id
-        WHERE d.name IS NOT NULL
-        ORDER BY d.name
+        SELECT DISTINCT department
+        FROM users
+        WHERE department IS NOT NULL AND department != ''
+        ORDER BY department
     """)
-
-    rows = cur.fetchall()
-    conn.close()
-
-    return [row["name"] for row in rows]
-
 
 @app.route("/leave_docs/<path:filename>")
 @login_required
