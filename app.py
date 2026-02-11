@@ -159,6 +159,11 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
 
+    is_postgres = "psycopg2" in str(type(conn))
+
+    if is_postgres:
+        return
+
     # Base tables
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
