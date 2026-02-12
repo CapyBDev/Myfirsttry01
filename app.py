@@ -1057,11 +1057,15 @@ def admin_dashboard_view(filter):
     # ====== Data untuk dropdown filter (type & position) ======
     c.execute(
         adapt_query("SELECT DISTINCT leave_type FROM leave_applications WHERE leave_type IS NOT NULL"))
-    leave_types = [r[0] for r in c.fetchall()]
+
+    rows = c.fetchall()
+    leave_types = [r["leave_type"] for r in rows]
 
     c.execute(
         adapt_query("SELECT DISTINCT position FROM leave_applications WHERE position IS NOT NULL"))
-    positions = [r[0] for r in c.fetchall()]
+
+    rows = c.fetchall()
+    positions = [r["position"] for r in rows]
 
     conn.close()
 
