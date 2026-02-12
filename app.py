@@ -68,7 +68,9 @@ def calculate_working_days(start_date, end_date):
     excluding Sat/Sun & public holidays."""
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("SELECT date FROM holidays"))
+    c.execute(
+        adapt_query("SELECT date FROM holidays")
+    )
     holiday_rows = c.fetchall()
     holidays = {h["date"] for h in holiday_rows}
     conn.close()
@@ -103,7 +105,7 @@ def get_used_leave_days(user_id, year=None):
         sql += " AND EXTRACT(YEAR FROM start_date::date) = ?"
         params.append(str(year))
 
-    c.execute(adapt_query(sql, params))
+    c.execute(adapt_query(sql), params)
     used = c.fetchone()[0]
     conn.close()
 
@@ -160,8 +162,7 @@ def adapt_query(query):
 
 def _add_column_if_missing(cur, table, name, coltype):
     if is_postgres():
-        cur.execute("""
-            SELECT column_name
+        cur.execute("""SELECT column_name
             FROM information_schema.columns
             WHERE table_name=%s
         """, (table,))
@@ -184,8 +185,7 @@ def init_db():
 
     # Base tables
     c.execute(
-        adapt_query("""
-        CREATE TABLE IF NOT EXISTS users (
+        adapt_query("""CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             full_name TEXT NOT NULL,
@@ -195,8 +195,7 @@ def init_db():
         )
     """))
     c.execute(
-        adapt_query("""
-        CREATE TABLE IF NOT EXISTS leaves (
+        adapt_query("""CREATE TABLE IF NOT EXISTS leaves (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             leave_type TEXT NOT NULL,
@@ -210,31 +209,27 @@ def init_db():
         )
     """))
     c.execute(
-        adapt_query("""
-        CREATE TABLE IF NOT EXISTS holidays (
+        adapt_query("""CREATE TABLE IF NOT EXISTS holidays (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             date TEXT NOT NULL
         )
     """))
     c.execute(
-        adapt_query("""
-        CREATE TABLE IF NOT EXISTS settings (
+        adapt_query("""CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT
         )
     """))
     c.execute(
-        adapt_query("""
-        CREATE TABLE IF NOT EXISTS departments (
+        adapt_query("""CREATE TABLE IF NOT EXISTS departments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL
         )
     """))
-    # ✅ Audit log / Timeline table
+    
     c.execute(
-        adapt_query("""
-        CREATE TABLE IF NOT EXISTS leave_logs (
+        adapt_query("""CREATE TABLE IF NOT EXISTS leave_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             leave_id INTEGER NOT NULL,
             action TEXT NOT NULL,
@@ -247,8 +242,7 @@ def init_db():
     """))
     # 🌿 NEW: Leave Applications table (for workflow with checker & approver)
     c.execute(
-        adapt_query("""
-        CREATE TABLE IF NOT EXISTS leave_applications (
+        adapt_query("""CREATE TABLE IF NOT EXISTS leave_applications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             full_name TEXT,
@@ -272,8 +266,7 @@ def init_db():
     """))
         # NEW: MC records table (medical certificates)
     c.execute(
-        adapt_query("""
-        CREATE TABLE IF NOT EXISTS mc_records (
+        adapt_query("""CREATE TABLE IF NOT EXISTS mc_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             mc_number TEXT,
@@ -338,24 +331,32 @@ def init_db():
     conn.commit()
 
     # Seed admin + sample user
-    c.execute(adapt_query("SELECT 1 FROM users WHERE username=?", ('admin',)))
+    c.execute(
+        adapt_query("SELECT 1 FROM users WHERE username=?"), 
+        ('admin',)
+    )
     if not c.fetchone():
-        c.execute(adapt_query(
-            "INSERT INTO users (username, full_name, password_hash, role, created_at, entitlement) VALUES (?,?,?,?,?,?)",
+        c.execute(
+            adapt_query("INSERT INTO users (username, full_name, password_hash, role, created_at, entitlement) VALUES (?,?,?,?,?,?)"),
             ("admin", "Administrator", generate_password_hash("admin123"), "admin",
              datetime.utcnow().isoformat(), 20)
-        ))
+        )
 
-    c.execute(adapt_query("SELECT 1 FROM users WHERE username=?", ('user',)))
+    c.execute(
+        adapt_query("SELECT 1 FROM users WHERE username=?"), 
+        ('user',)
+    )
     if not c.fetchone():
-        c.execute(adapt_query(
-            "INSERT INTO users (username, full_name, password_hash, role, created_at, entitlement) VALUES (?,?,?,?,?,?)",
+        c.execute(
+            adapt_query(
+            "INSERT INTO users (username, full_name, password_hash, role, created_at, entitlement) VALUES (?,?,?,?,?,?)"),
             ("user", "UserDash", generate_password_hash("password"), "user",
              datetime.utcnow().isoformat(), 14)
-        ))
+        )
 
     # Seed simple holidays (only if empty)
-    c.execute(adapt_query("SELECT COUNT(*) AS cnt FROM holidays"))
+    c.execute(
+        adapt_query("SELECT COUNT(*) AS cnt FROM holidays"))
     if c.fetchone()["cnt"] == 0:
         holidays = [
             ("New Year's Day", f"{date.today().year}-01-01"),
@@ -454,20 +455,22 @@ def auto_reset_mc_availability():
     # Cari user yang MC sudah tamat tapi masih status MC
     c.execute(
         adapt_query("""SELECT DISTINCT u.id
-        FROM mc_records m
-        JOIN users u ON u.id = m.user_id
-        WHERE m.end_date IS NOT NULL
-        AND date(m.end_date) < ?::date
-        AND u.availability = 'MC'
-    """, (today,)))
+            FROM mc_records m
+            JOIN users u ON u.id = m.user_id
+            WHERE m.end_date IS NOT NULL
+            AND m.end_date::date < ?::date
+            AND u.availability = 'MC'
+        """), 
+        (today,)
+    )
 
     users_to_reset = c.fetchall()
 
     for u in users_to_reset:
-        c.execute(adapt_query(
-            "UPDATE users SET availability='Available' WHERE id=?",
+        c.execute(
+            adapt_query("UPDATE users SET availability='Available' WHERE id=?"),
             (u["id"],)
-        ))
+        )
 
     conn.commit()
     conn.close()
@@ -485,7 +488,7 @@ def home():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    # Initialise counter
+
     if "login_attempts" not in session:
         session["login_attempts"] = 0
 
@@ -493,14 +496,17 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
-        # If too many attempts
+
         if session["login_attempts"] >= 3:
             flash("Too many failed attempts. Please use 'Forgot password / username'.", "warning")
             return redirect(url_for("login"))
 
         conn = get_db()
         c = conn.cursor()
-        c.execute(adapt_query("SELECT * FROM users WHERE username=?", (username,)))
+        c.execute(
+            adapt_query("SELECT * FROM users WHERE username=?"), 
+            (username,)
+        )
         user = c.fetchone()
         conn.close()
 
@@ -575,9 +581,11 @@ def admin_update_mc(mc_id):
     c = conn.cursor()
     c.execute(
         adapt_query("""UPDATE mc_records
-        SET mc_number=?, start_date=?, end_date=?
-        WHERE id=?
-    """, (mc_number, start, end, mc_id)))
+            SET mc_number=?, start_date=?, end_date=?
+            WHERE id=?
+        """), 
+        (mc_number, start, end, mc_id)
+    )
     conn.commit()
     conn.close()
 
@@ -645,8 +653,8 @@ def admin_dashboard():
     where_sql = " AND ".join(conditions)
 
     # ================= TREND GRAPH DATA =================
-    cur.execute(adapt_query(f"""
-        SELECT 
+    cur.execute(
+        adapt_query(f"""SELECT 
             EXTRACT(YEAR FROM l.start_date::date) AS year,
             EXTRACT(MONTH FROM l.start_date::date) AS month,
             COALESCE(d.name,'Unknown') AS department,
@@ -657,18 +665,22 @@ def admin_dashboard():
         WHERE {where_sql}
         GROUP BY year, month, department
         ORDER BY year, month
-    """, params))
+    """), params
+    )
 
     trend_raw = [dict(r) for r in cur.fetchall()]
 
     # ================= DROPDOWN VALUES =================
-    cur.execute(adapt_query("SELECT DISTINCT EXTRACT(YEAR FROM l.start_date::date) AS year FROM leave_applications"))
+    cur.execute(
+        adapt_query("SELECT DISTINCT EXTRACT(YEAR FROM l.start_date::date) AS year FROM leave_applications"))
     years = [r["year"] for r in cur.fetchall() if r["year"]]
 
-    cur.execute(adapt_query("SELECT DISTINCT EXTRACT(MONTH FROM l.start_date::date) AS month FROM leave_applications"))
+    cur.execute(
+        adapt_query("SELECT DISTINCT EXTRACT(MONTH FROM l.start_date::date) AS month FROM leave_applications"))
     months = [r["month"] for r in cur.fetchall() if r["month"]]
 
-    cur.execute(adapt_query("SELECT name FROM departments"))
+    cur.execute(
+        adapt_query("SELECT name FROM departments"))
     departments = [r["name"] for r in cur.fetchall()]
 
     conn.close()
@@ -755,31 +767,37 @@ def download_employee_leave_report(user_id):
     # ================= EMPLOYEE =================
     c.execute(
         adapt_query("""SELECT u.full_name, u.position, u.entitlement, d.name AS department
-        FROM users u
-        LEFT JOIN departments d ON u.department_id = d.id
-        WHERE u.id = ?
-    """, (user_id,)))
+            FROM users u
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE u.id = ?
+        """), 
+        (user_id,)
+    )
     emp = c.fetchone()
 
     # ================= APPROVED LEAVES =================
     c.execute(
         adapt_query("""SELECT leave_type, start_date, end_date, total_days
-        FROM leave_applications
-        WHERE user_id = ?
-          AND status='Approved'
-          AND EXTRACT(YEAR FROM start_date::date) = ?
-        ORDER BY start_date
-    """, (user_id, year)))
+            FROM leave_applications
+            WHERE user_id = ?
+            AND status='Approved'
+            AND EXTRACT(YEAR FROM start_date::date) = ?
+            ORDER BY start_date
+        """), 
+        (user_id, year)
+    )
     approved_leaves = c.fetchall()
 
     # ================= MC RECORDS =================
     c.execute(
         adapt_query("""SELECT mc_number, start_date, end_date
-        FROM mc_records
-        WHERE user_id = ?
-          AND EXTRACT(YEAR FROM start_date::date) = ?
-        ORDER BY start_date
-    """, (user_id, year)))
+            FROM mc_records
+            WHERE user_id = ?
+            AND EXTRACT(YEAR FROM start_date::date) = ?
+            ORDER BY start_date
+        """), 
+        (user_id, year)
+    )
     mc_records = c.fetchall()
 
     conn.close()
@@ -910,8 +928,8 @@ def download_individual_leave_report(user_id, format):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(adapt_query("""
-        SELECT
+    cur.execute(
+        adapt_query("""SELECT
             u.full_name,
             d.name AS department_name,
             l.leave_type,
@@ -922,7 +940,10 @@ def download_individual_leave_report(user_id, format):
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE u.id = ? AND l.status = 'Approved'
         ORDER BY l.start_date
-    """, (user_id,)))
+    """), 
+        (user_id,)
+    )
+    
     rows = cur.fetchall()
     conn.close()
 
@@ -1041,14 +1062,16 @@ def admin_dashboard_view(filter):
     # Susun ikut tarikh
     base_query += " ORDER BY start_date::date DESC "
 
-    c.execute(adapt_query(base_query, params))
+    c.execute(adapt_query(base_query), params)
     rows = c.fetchall()
 
     # ====== Data untuk dropdown filter (type & position) ======
-    c.execute(adapt_query("SELECT DISTINCT leave_type FROM leave_applications WHERE leave_type IS NOT NULL"))
+    c.execute(
+        adapt_query("SELECT DISTINCT leave_type FROM leave_applications WHERE leave_type IS NOT NULL"))
     leave_types = [r[0] for r in c.fetchall()]
 
-    c.execute(adapt_query("SELECT DISTINCT position FROM leave_applications WHERE position IS NOT NULL"))
+    c.execute(
+        adapt_query("SELECT DISTINCT position FROM leave_applications WHERE position IS NOT NULL"))
     positions = [r[0] for r in c.fetchall()]
 
     conn.close()
@@ -1099,7 +1122,7 @@ def view_all_leave_report():
 
     query += " GROUP BY la.user_id ORDER BY la.full_name"
 
-    c.execute(adapt_query(query, params))
+    c.execute(adapt_query(query), params)
     rows = c.fetchall()
     conn.close()
 
@@ -1179,7 +1202,8 @@ def get_dashboard_data(date_from=None, date_to=None):
     on_leave_today = c.fetchall()
 
     # ===================== DEPARTMENTS FOR FILTER ================
-    c.execute(adapt_query("SELECT DISTINCT name FROM departments WHERE name IS NOT NULL"))
+    c.execute(
+        adapt_query("SELECT DISTINCT name FROM departments WHERE name IS NOT NULL"))
     departments = [row[0] for row in c.fetchall()]
 
     # ===================== PIE (LEAVE TYPES) =====================
@@ -1257,7 +1281,8 @@ def get_dashboard_data(date_from=None, date_to=None):
         WHERE status = 'Rejected' """ + where_range + """
         ORDER BY start_date::date DESC
         LIMIT 10
-    """, params_rej))
+    """), params_rej
+    )
     rejected_details = c.fetchall()
 
     # --- Approved details ---
@@ -1273,7 +1298,8 @@ def get_dashboard_data(date_from=None, date_to=None):
         WHERE status = 'Approved' """ + where_range + """
         ORDER BY start_date::date DESC
         LIMIT 10
-    """, params_app))
+    """), params_app
+    )
     approved_details = c.fetchall()
 
     conn.close()
@@ -1324,7 +1350,6 @@ def get_leave_data(mode):
     rows = c.fetchall()
     conn.close()
     return rows
-
 
 @app.route("/admin/users")
 @admin_required
@@ -1406,10 +1431,11 @@ def manage_users():
     else:
         base_query += " ORDER BY u.id DESC"
 
-    c.execute(adapt_query(base_query, params))
+    c.execute(adapt_query(base_query), params)
     users = [dict(row) for row in c.fetchall()]
 
-    c.execute(adapt_query("SELECT * FROM departments ORDER BY name"))
+    c.execute(
+        adapt_query("SELECT * FROM departments ORDER BY name"))
     departments = [dict(row) for row in c.fetchall()]
 
     conn.close()
@@ -1442,7 +1468,10 @@ def update_availability(user_id):
     conn = get_db()
     c = conn.cursor()
 
-    c.execute(adapt_query("SELECT availability FROM users WHERE id=?", (user_id,)))
+    c.execute(
+        adapt_query("SELECT availability FROM users WHERE id=?"), 
+        (user_id,)
+    )
     row = c.fetchone()
     if not row:
         conn.close()
@@ -1451,7 +1480,10 @@ def update_availability(user_id):
     prev = row["availability"] if row["availability"] is not None else ""
 
     try:
-        c.execute(adapt_query("UPDATE users SET availability=? WHERE id=?", (new_status, user_id)))
+        c.execute(
+            adapt_query("UPDATE users SET availability=? WHERE id=?"), 
+            (new_status, user_id)
+        )
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -1484,9 +1516,11 @@ def reset_login(user_id):
     try:
         c.execute(
             adapt_query("""UPDATE users
-            SET username=?, password_hash=?
-            WHERE id=?
-        """, (new_username, hashed_pw, user_id)))
+                SET username=?, password_hash=?
+                WHERE id=?
+            """), 
+            (new_username, hashed_pw, user_id)
+        )
 
         conn.commit()
     except Exception as e:
@@ -1523,7 +1557,10 @@ def upload_mc():
     # Validate user exists
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("SELECT id FROM users WHERE id=?", (user_id,)))
+    c.execute(
+        adapt_query("SELECT id FROM users WHERE id=?"), 
+        (user_id,)
+    )
     if not c.fetchone():
         conn.close()
         flash("Pengguna tidak ditemui.", "danger")
@@ -1558,9 +1595,12 @@ def upload_mc():
         c.execute(
             adapt_query("""INSERT INTO mc_records (user_id, mc_number, start_date, end_date, pdf_path, uploaded_by, created_at)
             VALUES (?,?,?,?,?,?,?)
-        """, (user_id, mc_number, mc_start, mc_end, save_name, session.get("user_id"), datetime.utcnow().isoformat())))
+        """), (user_id, mc_number, mc_start, mc_end, save_name, session.get("user_id"), datetime.utcnow().isoformat()))
 
-        c.execute(adapt_query("UPDATE users SET availability=? WHERE id=?", ("Out", user_id)))
+        c.execute(
+            adapt_query("UPDATE users SET availability=? WHERE id=?"), 
+            ("Out", user_id)
+        )
         conn.commit()
         flash("MC berjaya dimuat naik dan status pengguna dikemaskini.", "success")
     except Exception as e:
@@ -1626,7 +1666,9 @@ def api_user(user_id):
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE u.id = ?
-    """, (user_id,)))
+    """), 
+        (user_id,)
+    )
     user = c.fetchone()
     conn.close()
 
@@ -1682,7 +1724,7 @@ def create_user():
                 address
             )
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
+        """), (
             username,
             full_name,
             generate_password_hash(password),
@@ -1696,7 +1738,8 @@ def create_user():
             phone,
             ic_number,
             address
-        )))
+        )
+    )
         conn.commit()
         flash("User created successfully.", "success")
     except Exception:
@@ -1714,7 +1757,10 @@ def delete_user(user_id):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("DELETE FROM users WHERE id=?", (user_id,)))
+    c.execute(
+        adapt_query("DELETE FROM users WHERE id=?"), 
+        (user_id,)
+    )
     conn.commit()
     conn.close()
 
@@ -1738,7 +1784,10 @@ def update_user_details(user_id):
 
     # ✅ if admin did NOT select new department, keep old one
     if not dept_id:
-        c.execute(adapt_query("SELECT department_id FROM users WHERE id=?", (user_id,)))
+        c.execute(
+            adapt_query("SELECT department_id FROM users WHERE id=?"), 
+            (user_id,)
+        )
         row = c.fetchone()
         dept_id = row["department_id"] if row else None
 
@@ -1753,17 +1802,17 @@ def update_user_details(user_id):
             availability  = ?,
             entitlement   = ?
         WHERE id = ?
-    """, (
+    """), (
         request.form.get("full_name"),
         request.form.get("email"),
         request.form.get("phone"),
         request.form.get("address"),
         request.form.get("position"),
-        dept_id,                 # ✅ preserved if not changed
+        dept_id,                
         availability_value,
         entitlement,
         user_id
-    )))
+    ))
 
     conn.commit()
     conn.close()
@@ -1785,7 +1834,10 @@ def update_entitlement(user_id):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("UPDATE users SET entitlement=? WHERE id=?", (value, user_id)))
+    c.execute(
+        adapt_query("UPDATE users SET entitlement=? WHERE id=?"), 
+        (value, user_id)
+    )
     conn.commit()
     conn.close()
     flash("Entitlement updated.", "success")
@@ -1821,7 +1873,8 @@ def manage_leaves():
     # =======================
     # DEPARTMENTS
     # =======================
-    cur.execute(adapt_query("SELECT id, name FROM departments ORDER BY name"))
+    cur.execute(
+        adapt_query("SELECT id, name FROM departments ORDER BY name"))
     departments = cur.fetchall()
 
     # =======================
@@ -1843,8 +1896,8 @@ def manage_leaves():
             dept_filter = "AND d.name = ?"
             params.append(selected_department)
 
-        cur.execute(adapt_query(f"""
-            SELECT u.id AS user_id,
+        cur.execute(
+            adapt_query(f"""SELECT u.id AS user_id,
                 u.full_name,
                 la.leave_type,
                 la.start_date,
@@ -1857,7 +1910,8 @@ def manage_leaves():
             AND EXTRACT(YEAR FROM la.start_date::date) = ?
             {dept_filter}
             ORDER BY u.full_name, la.start_date
-        """, params))
+        """), params
+        )
 
         rows = cur.fetchall()
         users = {}
@@ -1956,7 +2010,8 @@ def manage_leaves():
         AND la.end_date::date >= ?
         {dept_filter}
         ORDER BY u.full_name
-    """, params))
+    """), params
+    )
 
     rows = cur.fetchall()
 
@@ -1984,8 +2039,8 @@ def manage_leaves():
         dept_filter = "AND d.name = ?"
         params.append(selected_dept)
 
-    cur.execute(adapt_query(f"""
-        SELECT
+    cur.execute(
+        adapt_query(f"""SELECT
             m.user_id,
             u.full_name,
             m.start_date,
@@ -1996,7 +2051,8 @@ def manage_leaves():
         WHERE m.start_date::date <= ?
         AND m.end_date::date >= ?
         {dept_filter}
-    """, params))
+    """), params
+    )
 
     mc_rows = cur.fetchall()
 
@@ -2021,7 +2077,8 @@ def manage_leaves():
     # =======================
     # COMPLETED LIST
     # =======================
-    cur.execute(adapt_query("""
+    cur.execute(
+        adapt_query("""
         SELECT la.id, la.full_name,
                COALESCE(d.name,'') AS department_name,
                la.leave_type, la.start_date, la.end_date,
@@ -2106,7 +2163,7 @@ def completed_leaves_pdf():
 
     query += " ORDER BY la.start_date DESC"
 
-    cur.execute(adapt_query(query, params))
+    cur.execute(adapt_query(query), params)
     completed = cur.fetchall()
     conn.close()
 
@@ -2155,7 +2212,7 @@ def get_leave_matrix_report(year, department_id=None, user_id=None):
         ORDER BY u.full_name, la.leave_type
     """
 
-    rows = c.execute(adapt_query(sql, params)).fetchall()
+    rows = c.execute(adapt_query(sql), params).fetchall()
     conn.close()
 
     return rows
@@ -2239,7 +2296,7 @@ def download_leave_report_excel():
       ORDER BY u.full_name
     """
 
-    rows = c.execute(adapt_query(query, params)).fetchall()
+    rows = c.execute(adapt_query(query), params).fetchall()
 
     df = pd.DataFrame(rows, columns=[
         "Employee Name",
@@ -2297,7 +2354,7 @@ def download_leave_report_pdf():
       ORDER BY u.full_name
     """
 
-    rows = c.execute(adapt_query(query, params)).fetchall()
+    rows = c.execute(adapt_query(query), params).fetchall()
 
     return render_template(
         "leave_report_department_pdf.html",
@@ -2426,7 +2483,8 @@ def get_leave_report(report_type="monthly", month=None):
         WHERE {where_clause}
         GROUP BY la.user_id
         ORDER BY la.full_name
-    """, params))
+    """), params
+    )
 
     rows = c.fetchall()
     conn.close()
@@ -2478,7 +2536,9 @@ def assign_approver(leave_id):
         adapt_query("""UPDATE leaves
         SET next_approver=?, next_approver_position=?, next_approver_department=?
         WHERE id=?
-    """, (approver_position, approver_position, approver_department, leave_id)))
+    """), 
+        (approver_position, approver_position, approver_department, leave_id)
+    )
     conn.commit()
     conn.close()
 
@@ -2495,7 +2555,10 @@ def update_leave_status(leave_id, action):
     c = conn.cursor()
 
     # Fetch leave
-    c.execute(adapt_query("SELECT * FROM leaves WHERE id=?", (leave_id,)))
+    c.execute(
+        adapt_query("SELECT * FROM leaves WHERE id=?"), 
+        (leave_id,)
+    )
     leave = c.fetchone()
 
     if not leave:
@@ -2511,7 +2574,10 @@ def update_leave_status(leave_id, action):
             return redirect(url_for("user_dashboard"))
 
         # Approve leave
-        c.execute(adapt_query("UPDATE leaves SET status='Approved' WHERE id=?", (leave_id,)))
+        c.execute(
+            adapt_query("UPDATE leaves SET status='Approved' WHERE id=?"), 
+            (leave_id,)
+        )
         conn.commit()
 
         flash("Leave approved successfully.", "success")
@@ -2525,7 +2591,10 @@ def update_leave_status(leave_id, action):
             conn.close()
             return redirect(url_for("user_dashboard"))
 
-        c.execute(adapt_query("UPDATE leaves SET checked_status='Checked' WHERE id=?", (leave_id,)))
+        c.execute(
+            adapt_query("UPDATE leaves SET checked_status='Checked' WHERE id=?"), 
+            (leave_id,)
+        )
         conn.commit()
 
         flash("Leave checked successfully.", "success")
@@ -2539,7 +2608,10 @@ def update_leave_status(leave_id, action):
             conn.close()
             return redirect(url_for("user_dashboard"))
 
-        c.execute(adapt_query("UPDATE leaves SET status='Rejected' WHERE id=?", (leave_id,)))
+        c.execute(
+            adapt_query("UPDATE leaves SET status='Rejected' WHERE id=?"), 
+            (leave_id,)
+        )
         conn.commit()
 
         flash("Leave rejected.", "info")
@@ -2560,14 +2632,20 @@ def update_leave_status_modal():
 
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("SELECT id FROM leaves WHERE id=?", (leave_id,)))
+    c.execute(
+        adapt_query("SELECT id FROM leaves WHERE id=?"), 
+        (leave_id,)
+    )
     leave = c.fetchone()
 
     if not leave:
         conn.close()
         return jsonify({'success': False, 'error': 'Leave not found'}), 404
 
-    c.execute(adapt_query("UPDATE leaves SET status=? WHERE id=?", (new_status, leave_id)))
+    c.execute(
+        adapt_query("UPDATE leaves SET status=? WHERE id=?"), 
+        (new_status, leave_id)
+    )
     conn.commit()
     conn.close()
 
@@ -2583,12 +2661,16 @@ def holidays():
         name = request.form.get("name", "").strip()
         day = request.form.get("date", "").strip()
         if name and day:
-            c.execute(adapt_query("INSERT INTO holidays (name, date) VALUES (?,?)", (name, day)))
+            c.execute(
+                adapt_query("INSERT INTO holidays (name, date) VALUES (?,?)"), 
+                (name, day)
+            )
             conn.commit()
             flash("Holiday added.", "success")
         else:
             flash("Please provide name and date.", "danger")
-    c.execute(adapt_query("SELECT * FROM holidays ORDER BY date"))
+    c.execute(
+        adapt_query("SELECT * FROM holidays ORDER BY date"))
     rows = c.fetchall()
     conn.close()
     return render_template("holidays.html", holidays=rows)
@@ -2603,7 +2685,10 @@ def manage_departments():
         dept_name = request.form.get("name", "").strip()
         if dept_name:
             try:
-                c.execute(adapt_query("INSERT INTO departments (name) VALUES (?)", (dept_name,)))
+                c.execute(
+                    adapt_query("INSERT INTO departments (name) VALUES (?)"), 
+                    (dept_name,)
+                )
                 conn.commit()
                 flash("Department added successfully.", "success")
             except Exception:
@@ -2614,7 +2699,8 @@ def manage_departments():
             return redirect(url_for("manage_users"))
 
     # GET method (only if user visits /admin/departments directly)
-    c.execute(adapt_query("SELECT * FROM departments ORDER BY name"))
+    c.execute(
+        adapt_query("SELECT * FROM departments ORDER BY name"))
     departments = c.fetchall()
     conn.close()
 
@@ -2627,7 +2713,10 @@ def delete_department(dept_id):
     """Delete department and stay on Manage Users dashboard."""
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("DELETE FROM departments WHERE id=?", (dept_id,)))
+    c.execute(
+        adapt_query("DELETE FROM departments WHERE id=?"), 
+        (dept_id,)
+    )
     conn.commit()
     conn.close()
     flash("Department deleted successfully.", "info")
@@ -2648,8 +2737,8 @@ def ceo_dashboard():
     cur = conn.cursor()
 
     # ================== PENDING (CEO only) ==================
-    cur.execute(adapt_query("""
-        SELECT l.*, u.full_name, u.position AS user_position,
+    cur.execute(
+        adapt_query("""SELECT l.*, u.full_name, u.position AS user_position,
                d.name AS department_name
         FROM leave_applications l
         JOIN users u ON u.id = l.user_id
@@ -2662,8 +2751,8 @@ def ceo_dashboard():
     pending_count = len(pending_leaves)
 
     # ================== APPROVED (CEO only) ==================
-    cur.execute(adapt_query("""
-        SELECT l.*, u.full_name, u.position AS user_position,
+    cur.execute(
+        adapt_query("""SELECT l.*, u.full_name, u.position AS user_position,
                d.name AS department_name
         FROM leave_applications l
         JOIN users u ON u.id = l.user_id
@@ -2676,8 +2765,8 @@ def ceo_dashboard():
     approved_count = len(approved_leaves)
 
     # ================== REJECTED (CEO only) ==================
-    cur.execute(adapt_query("""
-        SELECT l.*, u.full_name, u.position AS user_position,
+    cur.execute(
+        adapt_query("""SELECT l.*, u.full_name, u.position AS user_position,
                d.name AS department_name
         FROM leave_applications l
         JOIN users u ON u.id = l.user_id
@@ -2690,8 +2779,8 @@ def ceo_dashboard():
     rejected_count = len(rejected_leaves)
 
     # ================== BAR GRAPH (Approved + Rejected per Month) ==================
-    cur.execute(adapt_query("""
-        SELECT 
+    cur.execute(
+        adapt_query("""SELECT 
             EXTRACT(YEAR FROM l.approved_at::date) AS year,
             EXTRACT(MONTH FROM l.approved_at::date) AS month,
             COALESCE(d.name,'Unknown') AS department,
@@ -2710,8 +2799,8 @@ def ceo_dashboard():
     years = sorted({row["year"] for row in stats})
 
     # ================== TREND RAW DATA (for filters) ==================
-    cur.execute(adapt_query("""
-        SELECT 
+    cur.execute(
+        adapt_query("""SELECT 
             EXTRACT(YEAR FROM l.approved_at::date) AS year,
             EXTRACT(MONTH FROM l.approved_at::date) AS month,
             COALESCE(d.name,'Unknown') AS department,
@@ -2726,8 +2815,8 @@ def ceo_dashboard():
     trend_raw = [dict(row) for row in cur.fetchall()]
 
     # ================== PIE CHART (Leave Type Distribution) ==================
-    cur.execute(adapt_query("""
-        SELECT 
+    cur.execute(
+        adapt_query("""SELECT 
             l.leave_type,
             COUNT(*) AS total
         FROM leave_applications l
@@ -2763,22 +2852,27 @@ def ceo_approve_leave(leave_id):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(adapt_query("SELECT * FROM leave_applications WHERE id=?", (leave_id,)))
+    cur.execute(
+        adapt_query("SELECT * FROM leave_applications WHERE id=?"), 
+                    (leave_id,)
+    )
     leave = cur.fetchone()
 
-    cur.execute(adapt_query("""
-        UPDATE leave_applications
+    cur.execute(
+        adapt_query("""UPDATE leave_applications
         SET status='Approved',
             approved_at=?
         WHERE id=?
-    """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id)))
+    """), (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
 
     if leave["leave_type"] != "MC":
-        cur.execute(adapt_query("""
-            UPDATE users
+        cur.execute(
+            adapt_query("""UPDATE users
             SET entitlement = entitlement - ?
             WHERE id = ?
-        """, (leave["total_days"], leave["user_id"])))
+        """), 
+            (leave["total_days"], leave["user_id"])
+        )
 
     conn.commit()
     conn.close()
@@ -2797,12 +2891,11 @@ def ceo_reject_leave(leave_id):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(adapt_query("""
-        UPDATE leave_applications
+    cur.execute(adapt_query("""UPDATE leave_applications
         SET status='Rejected',
             approved_at=?
         WHERE id=?
-    """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id)))
+    """), (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
 
     conn.commit()
     conn.close()
@@ -2822,12 +2915,18 @@ def user_dashboard():
     c = conn.cursor()
 
     # 🟦 Get and normalize user position
-    c.execute(adapt_query("SELECT position FROM users WHERE id=?", (user_id,)))
+    c.execute(
+        adapt_query("SELECT position FROM users WHERE id=?"), 
+        (user_id,)
+    )
     row = c.fetchone()
     my_pos = normalize(row["position"]) if row else ""
     
     # ===== ENTITLEMENT SUMMARY =====
-    c.execute(adapt_query("SELECT entitlement FROM users WHERE id=?", (user_id,)))
+    c.execute(
+        adapt_query("SELECT entitlement FROM users WHERE id=?"), 
+        (user_id,)
+    )
     entitlement = c.fetchone()["entitlement"] or 0
 
     c.execute(
@@ -2836,7 +2935,9 @@ def user_dashboard():
         WHERE user_id = ?
         AND status = 'Approved'
         AND leave_type != 'MC'
-    """, (user_id,)))
+    """), 
+        (user_id,)
+    )
 
     rows = c.fetchall()
 
@@ -2855,7 +2956,9 @@ def user_dashboard():
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.user_id=?
         ORDER BY l.id DESC
-    """, (user_id,)))
+    """), 
+        (user_id,)
+    )
     my_leaves = c.fetchall()
 
     # ===================== MY MC RECORDS =====================
@@ -2864,7 +2967,9 @@ def user_dashboard():
         FROM mc_records
         WHERE user_id = ?
         ORDER BY created_at DESC
-    """, (user_id,)))
+    """), 
+        (user_id,)
+    )
     my_mc = c.fetchall()
 
     # ===================== PENDING ACTIONS (NEW LOGIC) =====================
@@ -2885,7 +2990,9 @@ def user_dashboard():
                 AND UPPER(TRIM(l.approver_name)) = ?
             )
         ORDER BY l.id DESC
-    """, (my_pos, my_pos)))
+    """), 
+        (my_pos, my_pos)
+    )
 
     pending_actions = c.fetchall()
     recent_leaves = my_leaves[:3]
@@ -2936,7 +3043,8 @@ def user_leave_details(leave_id):
         JOIN users u ON u.id = l.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.id=? AND l.user_id=?
-    """, (leave_id, session["user_id"])))
+    """, (leave_id, session["user_id"]))
+    )
 
     leave = c.fetchone()
     conn.close()
@@ -2971,11 +3079,10 @@ def user_upload_mc():
     conn = get_db()
     c = conn.cursor()
     c.execute(
-        adapt_query("""
-        INSERT INTO mc_records
+        adapt_query("""INSERT INTO mc_records
         (user_id, mc_number, start_date, end_date, pdf_path, uploaded_by, created_at)
         VALUES (?,?,?,?,?,?,?)
-    """, (
+    """), (
         session["user_id"],
         mc_number,
         mc_start,
@@ -2983,10 +3090,10 @@ def user_upload_mc():
         save_name,
         session["user_id"],
         datetime.utcnow().isoformat()
-    )))
+    ))
 
-    c.execute(
-        "UPDATE users SET availability='MC' WHERE id=?",
+    c.execute(adapt_query(
+        "UPDATE users SET availability='MC' WHERE id=?"),
         (session["user_id"],)
     )
 
@@ -3067,12 +3174,12 @@ def apply_leave():
     cur = conn.cursor()
 
     # get department
-    cur.execute(adapt_query("""
-        SELECT d.name AS department
+    cur.execute(adapt_query("""SELECT d.name AS department
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE u.id = ?
-    """, (user_id,)))
+    """), (user_id,)
+    )
     row = cur.fetchone()
     department = row["department"] if row else ""
 
@@ -3098,12 +3205,12 @@ def apply_leave():
             support_doc = filename
             file.save(os.path.join(LEAVE_UPLOAD_FOLDER, support_doc))
 
-        cur.execute(adapt_query("""
-            INSERT INTO leave_applications
+        cur.execute(
+            adapt_query("""INSERT INTO leave_applications
             (user_id, full_name, position, leave_type, start_date, end_date,
             total_days, reason, contact_address, contact_phone, status, checker_name, approver_name, created_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
+        """), (
             user_id,
             full_name,
             pos_upper,
@@ -3118,7 +3225,7 @@ def apply_leave():
             checker_name,
             approver_name,
             datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        )))
+        ))
 
         conn.commit()
         conn.close()
@@ -3129,7 +3236,10 @@ def apply_leave():
     # ================= GET REMAINING LEAVE (FIXED) =================
 
     # get entitlement (FIXED VALUE)
-    cur.execute(adapt_query("SELECT entitlement FROM users WHERE id=?", (user_id,)))
+    cur.execute(
+        adapt_query("SELECT entitlement FROM users WHERE id=?"), 
+        (user_id,)
+    )
     user = cur.fetchone()
     entitlement = user["entitlement"] or 0
 
@@ -3160,8 +3270,8 @@ def approval_dashboard():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(adapt_query("""
-        SELECT 
+    cur.execute(
+        adapt_query("""SELECT 
             la.*,
             u.full_name,
             u.position,
@@ -3180,7 +3290,8 @@ def approval_dashboard():
                 AND UPPER(TRIM(la.approver_name)) = ?
             )
         ORDER BY la.created_at DESC
-    """, (my_position, my_position)))
+    """), (my_position, my_position)
+    )
 
     leaves = cur.fetchall()
     conn.close()
@@ -3196,7 +3307,10 @@ def check_leave_action(leave_id):
     conn = get_db()
     c = conn.cursor()
 
-    c.execute(adapt_query("SELECT * FROM leave_applications WHERE id=?", (leave_id,)))
+    c.execute(
+        adapt_query("SELECT * FROM leave_applications WHERE id=?"), 
+        (leave_id,)
+    )
     leave = c.fetchone()
 
     if not leave:
@@ -3216,7 +3330,7 @@ def check_leave_action(leave_id):
         SET status='Pending Approval',
             checked_at=?
         WHERE id=?
-    """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id)))
+    """), (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
 
     conn.commit()
     conn.close()
@@ -3232,7 +3346,10 @@ def approve_leave_action(leave_id):
     conn = get_db()
     c = conn.cursor()
 
-    c.execute(adapt_query("SELECT * FROM leave_applications WHERE id=?", (leave_id,)))
+    c.execute(
+        adapt_query("SELECT * FROM leave_applications WHERE id=?"), 
+        (leave_id,)
+    )
     leave = c.fetchone()
 
     if not leave:
@@ -3249,7 +3366,7 @@ def approve_leave_action(leave_id):
         SET status='Approved',
             approved_at=?
         WHERE id=?
-    """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id)))
+    """), (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
 
     conn.commit()
     conn.close()
@@ -3267,7 +3384,10 @@ def reject_leave_action(leave_id):
     conn = get_db()
     c = conn.cursor()
 
-    c.execute(adapt_query("SELECT * FROM leave_applications WHERE id=?", (leave_id,)))
+    c.execute(
+        adapt_query("SELECT * FROM leave_applications WHERE id=?"), 
+        (leave_id,)
+    )
     leave = c.fetchone()
 
     if not leave:
@@ -3283,7 +3403,7 @@ def reject_leave_action(leave_id):
         SET status='Rejected',
             approved_at=?
         WHERE id=?
-    """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id)))
+    """), (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
 
     conn.commit()
     conn.close()
@@ -3296,7 +3416,8 @@ def reject_leave_action(leave_id):
 def debug_positions():
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("SELECT id, full_name, position FROM users"))
+    c.execute(
+        adapt_query("SELECT id, full_name, position FROM users"))
     rows = c.fetchall()
     conn.close()
 
@@ -3313,7 +3434,8 @@ def calendar():
     c = conn.cursor()
 
     # Fetch holidays (still global)
-    c.execute(adapt_query("SELECT name, date FROM holidays ORDER BY date"))
+    c.execute(
+        adapt_query("SELECT name, date FROM holidays ORDER BY date"))
     holidays = c.fetchall()
 
     # 🔹 Upcoming leaves for this user only
@@ -3324,7 +3446,8 @@ def calendar():
         WHERE l.user_id = ?
         AND date(l.end_date) >= date('now')
         ORDER BY l.start_date ASC
-    """, (session["user_id"],)))
+    """), (session["user_id"],)
+    )
     leaves = c.fetchall()
 
     # 🔹 Leave history (past leaves for this user only)
@@ -3335,7 +3458,8 @@ def calendar():
         WHERE l.user_id = ?
         AND date(l.end_date) < date('now')
         ORDER BY l.start_date DESC
-    """, (session["user_id"],)))
+    """), (session["user_id"],)
+    )
     leave_history = c.fetchall()
 
     conn.close()
@@ -3357,10 +3481,10 @@ def profile():
         password = request.form.get("password", "").strip()
 
         if password:
-            c.execute(adapt_query(
-                "UPDATE users SET password_hash=? WHERE id=?",
+            c.execute(
+                adapt_query("UPDATE users SET password_hash=? WHERE id=?"),
                 (generate_password_hash(password), session["user_id"])
-            ))
+            )
 
         conn.commit()
         conn.close()
@@ -3373,7 +3497,8 @@ def profile():
         FROM users u
         LEFT JOIN departments d ON d.id = u.department_id
         WHERE u.id=?
-    """, (session["user_id"],)))
+    """, (session["user_id"],))
+    )
     user = c.fetchone()
 
     entitlement = user["entitlement"] or 0
@@ -3412,8 +3537,10 @@ def update_profile_photo():
 
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("UPDATE users SET profile_photo=? WHERE id=?",
-              (filename, session["user_id"])))
+    c.execute(
+        adapt_query("UPDATE users SET profile_photo=? WHERE id=?"),
+        (filename, session["user_id"])
+    )
     conn.commit()
     conn.close()
 
@@ -3433,7 +3560,10 @@ def delete_profile_photo():
     conn = get_db()
     c = conn.cursor()
 
-    c.execute(adapt_query("SELECT profile_photo FROM users WHERE id=?", (user_id,)))
+    c.execute(
+        adapt_query("SELECT profile_photo FROM users WHERE id=?"), 
+        (user_id,)
+    )
     row = c.fetchone()
 
     if row and row["profile_photo"]:
@@ -3441,7 +3571,10 @@ def delete_profile_photo():
         if os.path.exists(path):
             os.remove(path)
 
-    c.execute(adapt_query("UPDATE users SET profile_photo=NULL WHERE id=?", (user_id,)))
+    c.execute(
+        adapt_query("UPDATE users SET profile_photo=NULL WHERE id=?"), 
+        (user_id,)
+    )
     conn.commit()
     conn.close()
 
@@ -3458,13 +3591,16 @@ def settings():
     if request.method == "POST":
         org_name = request.form.get("org_name", "J-Leave App")
         theme = request.form.get("theme", "blue")
-        c.execute(adapt_query("INSERT INTO settings (key, value) VALUES ('org_name', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (org_name,)))
-        c.execute(adapt_query("INSERT INTO settings (key, value) VALUES ('theme', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (theme,)))
+        c.execute(
+            adapt_query("INSERT INTO settings (key, value) VALUES ('org_name', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (org_name,)))
+        c.execute(
+            adapt_query("INSERT INTO settings (key, value) VALUES ('theme', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (theme,)))
         conn.commit()
         conn.close()
         flash("Settings saved.", "success")
         return redirect(url_for("settings"))
-    c.execute(adapt_query("SELECT key, value FROM settings"))
+    c.execute(
+        adapt_query("SELECT key, value FROM settings"))
     settings_rows = {row["key"]: row["value"] for row in c.fetchall()}
     conn.close()
     return render_template("settings.html", settings=settings_rows)
@@ -3480,7 +3616,10 @@ def assign_checker(leave_id):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("SELECT full_name, position FROM users WHERE id=?", (checker_id,)))
+    c.execute(
+        adapt_query("SELECT full_name, position FROM users WHERE id=?"), 
+        (checker_id,)
+    )
     checker = c.fetchone()
 
     if not checker:
@@ -3492,7 +3631,8 @@ def assign_checker(leave_id):
         adapt_query("""UPDATE leaves 
         SET checked_by_user_id=?, checked_by_position=?, checked_status='Pending'
         WHERE id=?
-    """, (checker_id, checker["position"], leave_id)))
+    """), (checker_id, checker["position"], leave_id)
+    )
     conn.commit()
     conn.close()
 
@@ -3511,7 +3651,10 @@ def assign_approver_user(leave_id):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("SELECT full_name, position FROM users WHERE id=?", (approver_id,)))
+    c.execute(
+        adapt_query("SELECT full_name, position FROM users WHERE id=?"), 
+        (approver_id,)
+    )
     approver = c.fetchone()
 
     if not approver:
@@ -3523,7 +3666,8 @@ def assign_approver_user(leave_id):
         adapt_query("""UPDATE leaves 
         SET approved_by_user_id=?, next_approver=?, next_approver_position=?, status='Pending'
         WHERE id=?
-    """, (approver_id, approver["full_name"], approver["position"], leave_id)))
+    """), (approver_id, approver["full_name"], approver["position"], leave_id)
+    )
     conn.commit()
     conn.close()
 
@@ -3567,7 +3711,8 @@ def leave_details(leave_id):
         JOIN users u ON u.id = l.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.id=?
-    """, (leave_id,)))
+    """), (leave_id,)
+    )
     leave = c.fetchone()
     conn.close()
 
@@ -3607,7 +3752,8 @@ def api_leave_details(leave_id):
         JOIN users u ON l.user_id = u.id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.id=?
-    """, (leave_id,)))
+    """), (leave_id,)
+    )
     leave = c.fetchone()
     conn.close()
 
@@ -3640,7 +3786,8 @@ def get_departments():
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    cur.execute(adapt_query("""
+    cur.execute(
+        adapt_query("""
         SELECT DISTINCT department
         FROM users
         WHERE department IS NOT NULL AND department != ''
@@ -3659,7 +3806,10 @@ from email.mime.text import MIMEText
 def send_notification(user_id, message):
     conn = get_db()
     c = conn.cursor()
-    c.execute(adapt_query("SELECT email, phone FROM users WHERE id=?", (user_id,)))
+    c.execute(
+        adapt_query("SELECT email, phone FROM users WHERE id=?"), 
+        (user_id,)
+    )
     user = c.fetchone()
     conn.close()
 
@@ -3710,7 +3860,9 @@ def download_leave_pdf(leave_id):
         JOIN users u ON l.user_id = u.id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.id=?
-    """, (leave_id,)))
+    """), 
+        (leave_id,)
+    )
     leave = c.fetchone()
     conn.close()
 
@@ -3738,7 +3890,10 @@ def forgot_password():
 
         conn = get_db()
         c = conn.cursor()
-        c.execute(adapt_query("SELECT id FROM users WHERE email=?", (email,)))
+        c.execute(
+            adapt_query("SELECT id FROM users WHERE email=?"), 
+            (email,)
+        )
         user = c.fetchone()
 
         if not user:
@@ -3752,7 +3907,8 @@ def forgot_password():
             adapt_query("""UPDATE users
             SET reset_token=?, reset_token_expiry=?
             WHERE email=?
-        """, (token, expiry, email)))
+        """), (token, expiry, email)
+        )
         conn.commit()
         conn.close()
 
@@ -3771,7 +3927,10 @@ def reset_password(token):
     conn = get_db()
     c = conn.cursor()
 
-    c.execute(adapt_query("SELECT id, reset_token_expiry FROM users WHERE reset_token=?", (token,)))
+    c.execute(
+        adapt_query("SELECT id, reset_token_expiry FROM users WHERE reset_token=?"), 
+        (token,)
+    )
     user = c.fetchone()
 
     if not user:
@@ -3803,13 +3962,15 @@ def reset_password(token):
                 adapt_query("""UPDATE users
                 SET username=?, password_hash=?, reset_token=NULL, reset_token_expiry=NULL
                 WHERE id=?
-            """, (username, password_hash, user["id"])))
+            """), (username, password_hash, user["id"])
+            )
         else:
             c.execute(
                 adapt_query("""UPDATE users
                 SET password_hash=?, reset_token=NULL, reset_token_expiry=NULL
                 WHERE id=?
-            """, (password_hash, user["id"])))
+            """), (password_hash, user["id"])
+            )
 
         conn.commit()
         conn.close()
@@ -3867,7 +4028,8 @@ def view_individual_leave_report(user_id):
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE u.id = ?
-    """, (user_id,)))
+    """), (user_id,)
+    )
     emp = c.fetchone()
 
     # ================= APPROVED LEAVES =================
@@ -3878,7 +4040,8 @@ def view_individual_leave_report(user_id):
           AND status = 'Approved'
           AND EXTRACT(YEAR FROM la.start_date::date)  = ?
         ORDER BY start_date
-    """, (user_id, year)))
+    """), (user_id, year)
+    )
     approved_leaves = c.fetchall()
 
     # ================= MC RECORDS (REAL DATA) =================
@@ -3888,7 +4051,8 @@ def view_individual_leave_report(user_id):
         WHERE user_id = ?
           AND EXTRACT(YEAR FROM start_date::date) = ?
         ORDER BY start_date
-    """, (user_id, year)))
+    """), (user_id, year)
+    )
     mc_records = c.fetchall()
 
     conn.close()
@@ -4025,15 +4189,16 @@ def build_individual_leave_report(user_id, year):
     cur = conn.cursor()
 
     # Employee info
-    cur.execute(adapt_query("""
-        SELECT 
+    cur.execute(
+        adapt_query("""SELECT 
             u.full_name,
             u.position,
             d.name AS department
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE u.id = ?
-    """, (user_id,)))
+    """), (user_id,)
+    )
     emp = cur.fetchone()
 
     if not emp:
@@ -4045,13 +4210,14 @@ def build_individual_leave_report(user_id, year):
         "July","August","September","October","November","December"
     ]}
 
-    cur.execute(adapt_query("""
-        SELECT start_date, end_date
+    cur.execute(
+        adapt_query("""SELECT start_date, end_date
         FROM leave_applications
         WHERE user_id = ?
           AND status = 'Approved'
           AND EXTRACT(YEAR FROM start_date::date) = ?
-    """, (user_id, int(year))))
+    """), (user_id, int(year))
+    )
 
     leaves = cur.fetchall()
     conn.close()
@@ -4149,7 +4315,8 @@ def team_leave_report():
     c = conn.cursor()
 
     # ================= DEPARTMENT LIST =================
-    c.execute(adapt_query("SELECT name FROM departments ORDER BY name"))
+    c.execute(
+        adapt_query("SELECT name FROM departments ORDER BY name"))
     departments = [r["name"] for r in c.fetchall()]
 
     report = []
@@ -4171,7 +4338,8 @@ def team_leave_report():
             WHERE la.status = 'Approved'
               AND d.name = ?
             ORDER BY u.full_name, la.start_date
-        """, (department,)))
+        """), (department,)
+        )
 
         rows = c.fetchall()
 
@@ -4237,8 +4405,8 @@ def get_leave_report_data(year, month, department):
         params.append(department)
 
     # ================= APPROVED LEAVES =================
-    cur.execute(adapt_query(f"""
-        SELECT
+    cur.execute(
+        adapt_query(f"""SELECT
             u.id AS user_id,
             u.full_name,
             u.entitlement,
@@ -4254,7 +4422,8 @@ def get_leave_report_data(year, month, department):
           AND la.end_date::date >= ?
           {dept_filter}
         ORDER BY u.full_name, la.start_date
-    """, params))
+    """), params
+    )
 
     rows = cur.fetchall()
     users = {}
@@ -4294,15 +4463,16 @@ def get_leave_report_data(year, month, department):
             cur_day += timedelta(days=1)
 
     # ================= MC RECORDS =================
-    cur.execute(adapt_query("""
-        SELECT user_id, start_date, end_date
+    cur.execute(
+        adapt_query("""SELECT user_id, start_date, end_date
         FROM mc_records
         WHERE start_date::date <= ?
           AND end_date >= ?
-    """, (
+    """), (
         last_day.strftime("%Y-%m-%d"),
         first_day.strftime("%Y-%m-%d")
-    )))
+    )
+    )
 
     mc_rows = cur.fetchall()
 
@@ -4353,8 +4523,8 @@ def preview_leave_report_department():
         params.append(department)
 
     # ================= APPROVED LEAVES =================
-    cur.execute(adapt_query(f"""
-        SELECT
+    cur.execute(
+        adapt_query(f"""SELECT
             u.id AS user_id,
             u.full_name,
             u.entitlement,
@@ -4370,7 +4540,8 @@ def preview_leave_report_department():
           AND la.end_date::date >= ?
           {dept_filter}
         ORDER BY u.full_name, la.start_date
-    """, params))
+    """), params
+    )
 
     rows = cur.fetchall()
     users = {}
@@ -4414,18 +4585,19 @@ def preview_leave_report_department():
             cur_day += timedelta(days=1)
 
     # ================= MC RECORDS (APPLIED DATE) =================
-    cur.execute(adapt_query("""
-        SELECT
+    cur.execute(
+        adapt_query("""SELECT
             m.user_id,
             m.start_date,
             m.end_date
         FROM mc_records m
         WHERE m.start_date::date <= ?
           AND m.end_date::date >= ?
-    """, (
+    """), (
         last_day.strftime("%Y-%m-%d"),
         first_day.strftime("%Y-%m-%d")
-    )))
+    )
+    )
 
     mc_rows = cur.fetchall()
 
@@ -4487,8 +4659,8 @@ def team_leave_pdf():
         dept_filter = "AND d.name=?"
         params.append(department)
 
-    cur.execute(adapt_query(f"""
-        SELECT
+    cur.execute(
+        adapt_query(f"""SELECT
             u.id AS user_id,
             u.full_name,
             u.entitlement,
@@ -4504,7 +4676,8 @@ def team_leave_pdf():
           AND la.end_date::date >= ?
           {dept_filter}
         ORDER BY u.full_name, la.start_date
-    """, params))
+    """), params
+    )
 
     rows = cur.fetchall()
     users = {}
@@ -4538,11 +4711,13 @@ def team_leave_pdf():
             cur_day += timedelta(days=1)
 
     # MC override
-    cur.execute(adapt_query("""
-        SELECT user_id, start_date, end_date
+    cur.execute(
+        adapt_query("""SELECT user_id, start_date, end_date
         FROM mc_records
         WHERE start_date::date <= ? AND end_date::date >= ?
-    """, (last_day.strftime("%Y-%m-%d"), first_day.strftime("%Y-%m-%d"))))
+    """), 
+        (last_day.strftime("%Y-%m-%d"), first_day.strftime("%Y-%m-%d"))
+    )
     mc_rows = cur.fetchall()
 
     for m in mc_rows:
@@ -4764,7 +4939,10 @@ def inject_my_leaves():
             WHERE user_id=?
             ORDER BY id DESC
             LIMIT 1
-        """, (session["user_id"],)))
+        """), 
+        (session["user_id"],)
+        )
+        
         my_leaves = c.fetchall()
         conn.close()
     return dict(my_leaves=my_leaves)
@@ -4832,8 +5010,8 @@ def print_monthly_matrix_pdf():
         dept_filter = "AND d.name = ?"
         params.append(department)
 
-    cur.execute(adapt_query(f"""
-        SELECT
+    cur.execute(
+        adapt_query(f"""SELECT
             la.user_id,
             u.full_name,
             la.leave_type,
@@ -4847,7 +5025,8 @@ def print_monthly_matrix_pdf():
           AND la.end_date::date >= ?
           {dept_filter}
         ORDER BY u.full_name
-    """, params))
+    """), params
+    )
 
     for r in cur.fetchall():
         if not r["start_date"] or not r["end_date"]:
@@ -4872,8 +5051,8 @@ def print_monthly_matrix_pdf():
         dept_filter = "AND d.name = ?"
         params.append(department)
 
-    cur.execute(adapt_query(f"""
-        SELECT
+    cur.execute(
+        adapt_query(f"""SELECT
             m.user_id,
             u.full_name,
             m.start_date,
@@ -4884,7 +5063,8 @@ def print_monthly_matrix_pdf():
         WHERE m.start_date::date <= ?
           AND m.end_date::date >= ?
           {dept_filter}
-    """, params))
+    """), params
+    )
 
     for m in cur.fetchall():
         if not m["start_date"] or not m["end_date"]:
