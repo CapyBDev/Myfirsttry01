@@ -118,17 +118,6 @@ def get_next_position(position):
 def allowed_photo(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# ---------------------- DB Helpers ----------------------
-# def get_db():
-#     database_url = os.environ.get("DATABASE_URL")
-
-#     conn = psycopg2.connect(
-#         database_url,
-#         sslmode="require",
-#         cursor_factory=RealDictCursor
-#     )
-#     return conn
-
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
@@ -1144,7 +1133,11 @@ def get_dashboard_data(date_from=None, date_to=None):
         FROM leave_applications 
         WHERE EXTRACT(MONTH FROM start_date::date) = EXTRACT(MONTH FROM CURRENT_DATE)
     """))
-    total_this_month = c.fetchone()[0]
+    row = c.fetchone()
+    if not row:
+        total_this_month = 0
+    else:
+        total_this_month = list(row.values())[0] if isinstance(row, dict) else row[0]
 
     # Total employees on leave today
     c.execute(
@@ -1153,7 +1146,11 @@ def get_dashboard_data(date_from=None, date_to=None):
         WHERE status = 'Approved'
         AND CURRENT_DATE BETWEEN start_date::date AND end_date::date
     """))
-    leave_today = c.fetchone()[0]
+    row = c.fetchone()
+    if not row:
+        leave_today = 0
+    else:
+        leave_today = list(row.values())[0] if isinstance(row, dict) else row[0]
 
     # Pending leave (check + approval stage)
     c.execute(
@@ -1161,7 +1158,11 @@ def get_dashboard_data(date_from=None, date_to=None):
         FROM leave_applications
         WHERE status IN ('Pending Recommender','Pending Approval')
     """))
-    pending_leave = c.fetchone()[0]
+    row = c.fetchone()
+    if not row:
+        pending_leave = 0
+    else:
+        pending_leave = list(row.values())[0] if isinstance(row, dict) else row[0]
     
     # Approved leave
     c.execute(
@@ -1169,7 +1170,11 @@ def get_dashboard_data(date_from=None, date_to=None):
         FROM leave_applications
         WHERE status = 'Approved'
     """))
-    approved_leave = c.fetchone()[0]
+    row = c.fetchone()
+    if not row:
+        approved_leave = 0
+    else:
+        approved_leave = list(row.values())[0] if isinstance(row, dict) else row[0]
 
     # Rejected leave
     c.execute(
@@ -1177,7 +1182,11 @@ def get_dashboard_data(date_from=None, date_to=None):
         FROM leave_applications
         WHERE status = 'Rejected'
     """))
-    rejected_leave = c.fetchone()[0]
+    row = c.fetchone()
+    if not row:
+        rejected_leave = 0
+    else:
+        rejected_leave = list(row.values())[0] if isinstance(row, dict) else row[0]
 
     # ===================== RECENT REQUEST LIST ==================
     c.execute(
@@ -1213,8 +1222,8 @@ def get_dashboard_data(date_from=None, date_to=None):
         GROUP BY leave_type
     """))
     rows = c.fetchall()
-    leave_types = [r[0] for r in rows]
-    leave_type_count = [r[1] for r in rows]
+    leave_types = [r["leave_type"] for r in rows]
+    leave_type_count = [r["count"] for r in rows]
 
     # ===================== TREND (WEEKLY) ========================
     c.execute(
@@ -2854,7 +2863,7 @@ def ceo_approve_leave(leave_id):
 
     cur.execute(
         adapt_query("SELECT * FROM leave_applications WHERE id=?"), 
-                    (leave_id,)
+        (leave_id,)
     )
     leave = cur.fetchone()
 
