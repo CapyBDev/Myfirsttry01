@@ -440,11 +440,11 @@ def send_email_html(to_email, subject, html_content):
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
 
-
-@app.before_first_request
+@app.before_request
 def ensure_db():
-    # Always run init_db to ensure migrations apply to older DBs
-    init_db()
+    if not hasattr(app, "_db_initialized"):
+        init_db()
+        app._db_initialized = True
     
 def auto_reset_mc_availability():
     today = date.today().isoformat()
