@@ -6,4 +6,4 @@ openpyxl
 reportLab
 pandas
 requests
-weasyprint
+weasyprint1
