@@ -660,11 +660,11 @@ def admin_dashboard():
 
     # ================= DROPDOWN VALUES =================
     cur.execute(
-        adapt_query("SELECT DISTINCT EXTRACT(YEAR FROM l.start_date::date) AS year FROM leave_applications"))
+        adapt_query("SELECT DISTINCT EXTRACT(YEAR FROM start_date::date) AS year FROM leave_applications"))
     years = [r["year"] for r in cur.fetchall() if r["year"]]
 
     cur.execute(
-        adapt_query("SELECT DISTINCT EXTRACT(MONTH FROM l.start_date::date) AS month FROM leave_applications"))
+        adapt_query("SELECT DISTINCT EXTRACT(MONTH FROM start_date::date) AS month FROM leave_applications"))
     months = [r["month"] for r in cur.fetchall() if r["month"]]
 
     cur.execute(
