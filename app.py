@@ -106,7 +106,7 @@ def get_used_leave_days(user_id, year=None):
         params.append(str(year))
 
     c.execute(adapt_query(sql), params)
-    used = c.fetchone()[0]
+    used = c.fetchone()["total"]
     conn.close()
 
     return used
@@ -1130,66 +1130,41 @@ def get_dashboard_data(date_from=None, date_to=None):
     c = conn.cursor()
 
     # ===================== SUMMARY CARDS =======================
-    # Total leave application this month (submitted)
     c.execute(
-        adapt_query("""SELECT COUNT(*) 
-        FROM leave_applications 
-        WHERE EXTRACT(MONTH FROM start_date::date) = EXTRACT(MONTH FROM CURRENT_DATE)
-    """))
-    row = c.fetchone()
-    if not row:
-        total_this_month = 0
-    else:
-        total_this_month = list(row.values())[0] if isinstance(row, dict) else row[0]
+        adapt_query("""SELECT
+            COUNT(*) FILTER (
+                WHERE EXTRACT(MONTH FROM start_date::date) =
+                    EXTRACT(MONTH FROM CURRENT_DATE)
+            ) AS total_this_month,
 
-    # Total employees on leave today
-    c.execute(
-        adapt_query("""SELECT COUNT(*) 
-        FROM leave_applications
-        WHERE status = 'Approved'
-        AND CURRENT_DATE BETWEEN start_date::date AND end_date::date
-    """))
-    row = c.fetchone()
-    if not row:
-        leave_today = 0
-    else:
-        leave_today = list(row.values())[0] if isinstance(row, dict) else row[0]
+            COUNT(*) FILTER (
+                WHERE status='Approved'
+                AND CURRENT_DATE BETWEEN start_date::date AND end_date::date
+            ) AS leave_today,
 
-    # Pending leave (check + approval stage)
-    c.execute(
-        adapt_query("""SELECT COUNT(*)
-        FROM leave_applications
-        WHERE status IN ('Pending Recommender','Pending Approval')
-    """))
-    row = c.fetchone()
-    if not row:
-        pending_leave = 0
-    else:
-        pending_leave = list(row.values())[0] if isinstance(row, dict) else row[0]
-    
-    # Approved leave
-    c.execute(
-        adapt_query("""SELECT COUNT(*)
-        FROM leave_applications
-        WHERE status = 'Approved'
-    """))
-    row = c.fetchone()
-    if not row:
-        approved_leave = 0
-    else:
-        approved_leave = list(row.values())[0] if isinstance(row, dict) else row[0]
+            COUNT(*) FILTER (
+                WHERE status IN ('Pending Recommender','Pending Approval')
+            ) AS pending_leave,
 
-    # Rejected leave
-    c.execute(
-        adapt_query("""SELECT COUNT(*)
+            COUNT(*) FILTER (
+                WHERE status='Approved'
+            ) AS approved_leave,
+
+            COUNT(*) FILTER (
+                WHERE status='Rejected'
+            ) AS rejected_leave
+
         FROM leave_applications
-        WHERE status = 'Rejected'
     """))
-    row = c.fetchone()
-    if not row:
-        rejected_leave = 0
-    else:
-        rejected_leave = list(row.values())[0] if isinstance(row, dict) else row[0]
+
+    summary = c.fetchone()
+
+    total_this_month = summary["total_this_month"]
+    leave_today      = summary["leave_today"]
+    pending_leave    = summary["pending_leave"]
+    approved_leave   = summary["approved_leave"]
+    rejected_leave   = summary["rejected_leave"]
+
 
     # ===================== RECENT REQUEST LIST ==================
     c.execute(
@@ -1216,12 +1191,12 @@ def get_dashboard_data(date_from=None, date_to=None):
     # ===================== DEPARTMENTS FOR FILTER ================
     c.execute(
         adapt_query("SELECT DISTINCT name FROM departments WHERE name IS NOT NULL"))
-    departments = [row[0] for row in c.fetchall()]
+    departments = [row["name"] for row in c.fetchall()]
 
     # ===================== PIE (LEAVE TYPES) =====================
     c.execute(
-        adapt_query("""SELECT leave_type, COUNT(*) 
-        FROM leave_applications 
+        adapt_query("""SELECT leave_type, COUNT(*) AS total
+        FROM leave_applications
         GROUP BY leave_type
     """))
     rows = c.fetchall()
@@ -1230,15 +1205,18 @@ def get_dashboard_data(date_from=None, date_to=None):
 
     # ===================== TREND (WEEKLY) ========================
     c.execute(
-        adapt_query("""SELECT TO_CHAR(start_date::date, 'DD/MM'), COUNT(*) 
+        adapt_query("""SELECT 
+            TO_CHAR(start_date::date, 'DD/MM') AS label,
+            COUNT(*) AS total
         FROM leave_applications
         WHERE start_date::date >= CURRENT_DATE - INTERVAL '7 days'
-        GROUP BY start_date
+        GROUP BY start_date::date
     """))
+
     t = c.fetchall()
-    trend_labels = [r[0] for r in t]
-    trend_data = [r[1] for r in t]
-    
+    trend_labels = [r["label"] for r in t]
+    trend_data   = [r["total"] for r in t]
+
     # ===================== MC RECORDS =====================
     c.execute(
         adapt_query("""SELECT 
@@ -1258,16 +1236,18 @@ def get_dashboard_data(date_from=None, date_to=None):
     mc_records = c.fetchall()
     # ===================== MC COUNT PER MONTH =====================
     c.execute(
-        adapt_query("""SELECT TO_CHAR(created_at::date, 'MM/YYYY') AS month, COUNT(*)
+        adapt_query("""SELECT 
+            TO_CHAR(created_at::date, 'MM/YYYY') AS label,
+            COUNT(*) AS total
         FROM mc_records
-        GROUP BY month
-        ORDER BY created_at DESC
+        GROUP BY label
+        ORDER BY label DESC
         LIMIT 6
     """))
-    mc_rows = c.fetchall()
 
-    mc_labels = [r[0] for r in mc_rows]
-    mc_counts = [r[1] for r in mc_rows]
+    mc_rows = c.fetchall()
+    mc_labels = [r["label"] for r in mc_rows]
+    mc_counts = [r["total"] for r in mc_rows]
 
     # ===================== APPROVED / REJECTED DETAILS ===========
     range_clauses = []
@@ -2224,7 +2204,9 @@ def get_leave_matrix_report(year, department_id=None, user_id=None):
         ORDER BY u.full_name, la.leave_type
     """
 
-    rows = c.execute(adapt_query(sql), params).fetchall()
+    c.execute(adapt_query(sql), params)
+    rows = c.fetchall()
+
     conn.close()
 
     return rows
@@ -2308,7 +2290,8 @@ def download_leave_report_excel():
       ORDER BY u.full_name
     """
 
-    rows = c.execute(adapt_query(query), params).fetchall()
+    c.execute(adapt_query(query), params)
+    rows = c.fetchall()
 
     df = pd.DataFrame(rows, columns=[
         "Employee Name",
@@ -2366,7 +2349,9 @@ def download_leave_report_pdf():
       ORDER BY u.full_name
     """
 
-    rows = c.execute(adapt_query(query), params).fetchall()
+    c.execute(adapt_query(query), params)
+    rows = c.fetchall()
+
 
     return render_template(
         "leave_report_department_pdf.html",
