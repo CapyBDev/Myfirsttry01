@@ -1201,7 +1201,7 @@ def get_dashboard_data(date_from=None, date_to=None):
     """))
     rows = c.fetchall()
     leave_types = [r["leave_type"] for r in rows]
-    leave_type_count = [r["count"] for r in rows]
+    leave_type_count = [r["total"] for r in rows]
 
     # ===================== TREND (WEEKLY) ========================
     c.execute(
