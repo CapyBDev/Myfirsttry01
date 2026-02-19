@@ -173,14 +173,16 @@ def get_db():
 
 
 def init_db():
-    """Create tables if missing and migrate columns if DB already exists."""
     conn = get_db()
     c = conn.cursor()
 
-    # if is_postgres():
-    #     return
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS departments (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) UNIQUE NOT NULL
+    )
+    """)
 
-    # Base tables
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
