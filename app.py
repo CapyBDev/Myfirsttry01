@@ -5152,8 +5152,13 @@ def print_monthly_matrix_pdf():
         download_name=filename,
         mimetype="application/pdf"
     )
+
+# -----------------------------
+# Initialize database (Flask 3 safe)
+# -----------------------------
+with app.app_context():
+    init_db()
     
 if __name__ == "__main__":
-    init_db()
     app.run(debug=True, host="0.0.0.0", port=5000)
     
