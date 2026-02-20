@@ -459,7 +459,7 @@ def auto_reset_mc_availability():
             FROM mc_records m
             JOIN users u ON u.id = m.user_id
             WHERE m.end_date IS NOT NULL
-            AND m.DATE(end_date) < DATE(%s)
+            AND DATE(m.end_date) < DATE(%s)
             AND u.availability = 'MC'
         """), 
         (today,)
@@ -2053,8 +2053,8 @@ def manage_leaves():
         FROM mc_records m
         JOIN users u ON u.id = m.user_id
         LEFT JOIN departments d ON u.department_id = d.id
-        WHERE m.DATE(start_date) <= %s
-        AND m.DATE(end_date) >= %s
+        WHERE DATE(m.start_date) <= %s
+        AND DATE(m.end_date) >= %s
         {dept_filter}
     """), params
     )
@@ -4601,8 +4601,8 @@ def preview_leave_report_department():
             m.start_date,
             m.end_date
         FROM mc_records m
-        WHERE m.DATE(start_date) <= %s
-          AND m.DATE(end_date) >= %s
+        WHERE DATE(m.start_date) <= %s
+          AND DATE(m.end_date) >= %s
     """), (
         last_day.strftime("%Y-%m-%d"),
         first_day.strftime("%Y-%m-%d")
@@ -5070,8 +5070,8 @@ def print_monthly_matrix_pdf():
         FROM mc_records m
         JOIN users u ON u.id = m.user_id
         LEFT JOIN departments d ON u.department_id = d.id
-        WHERE m.DATE(start_date) <= %s
-          AND m.DATE(end_date) >= %s
+        WHERE DATE(m.start_date) <= %s
+          AND DATE(m.end_date) >= %s
           {dept_filter}
     """), params
     )
