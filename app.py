@@ -34,8 +34,6 @@ if not os.environ.get("SECRET_KEY"):
 else:
     app.secret_key = os.environ.get("SECRET_KEY")
 
-with app.app_context():
-    init_db()
 
 # === Upload config untuk dokumen sokongan leave ===
 LEAVE_UPLOAD_FOLDER = os.path.join("static", "uploads", "leave_docs")
@@ -5153,12 +5151,9 @@ def print_monthly_matrix_pdf():
         mimetype="application/pdf"
     )
 
-# -----------------------------
-# Initialize database (Flask 3 safe)
-# -----------------------------
 with app.app_context():
     init_db()
-    
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
     
