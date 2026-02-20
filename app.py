@@ -331,16 +331,26 @@ def init_db():
 
     conn.commit()
 
-    # Seed admin + sample user
     c.execute(
-        adapt_query("SELECT 1 FROM users WHERE username=%s"), 
-        ('admin',)
+        adapt_query("SELECT 1 FROM users WHERE username=%s"),
+        ("admin",)
     )
+
     if not c.fetchone():
         c.execute(
-            adapt_query("INSERT INTO users (username, full_name, password_hash, role, created_at, entitlement) VALUES (%s,%s,%s,%s,%s,%s)"),
-            ("admin", "Administrator", generate_password_hash("admin123"), "admin",
-             datetime.utcnow().isoformat(), 20)
+            adapt_query("""
+                INSERT INTO users
+                (username, full_name, password_hash, role, created_at, entitlement)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """),
+            (
+                "admin",
+                "Administrator",
+                generate_password_hash("admin123"),
+                "admin",
+                datetime.utcnow().isoformat(),
+                20
+            )
         )
 
     c.execute(
