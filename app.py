@@ -152,18 +152,20 @@ def adapt_query(query):
 
 def _add_column_if_missing(cur, table, name, coltype):
     if is_postgres():
-        cur.execute("""SELECT column_name
+        cur.execute("""
+            SELECT column_name
             FROM information_schema.columns
             WHERE table_name=%s
         """, (table,))
-        cols = [r[0] for r in cur.fetchall()]
+        cols = [r["column_name"] for r in cur.fetchall()]
     else:
         cur.execute(f"PRAGMA table_info({table})")
         cols = [r["name"] for r in cur.fetchall()]
 
     if name not in cols:
-        cur.execute(adapt_query(f"ALTER TABLE {table} ADD COLUMN {name} {coltype}"))
-
+        cur.execute(adapt_query(
+            f"ALTER TABLE {table} ADD COLUMN {name} {coltype}"
+        ))
 
 def init_db():
     """Create tables for both PostgreSQL and SQLite"""
