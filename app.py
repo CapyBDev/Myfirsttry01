@@ -194,7 +194,7 @@ def init_db():
     """))
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS leaves (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             leave_type TEXT NOT NULL,
             start_date TEXT NOT NULL,
@@ -208,7 +208,7 @@ def init_db():
     """))
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS holidays (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             date TEXT NOT NULL
         )
@@ -221,14 +221,14 @@ def init_db():
     """))
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS departments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT UNIQUE NOT NULL
         )
     """))
     
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS leave_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             leave_id INTEGER NOT NULL,
             action TEXT NOT NULL,
             performed_by INTEGER NOT NULL,
@@ -241,7 +241,7 @@ def init_db():
     # 🌿 NEW: Leave Applications table (for workflow with checker & approver)
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS leave_applications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             full_name TEXT,
             position TEXT,
@@ -265,7 +265,7 @@ def init_db():
         # NEW: MC records table (medical certificates)
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS mc_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             mc_number TEXT,
             start_date TEXT,
