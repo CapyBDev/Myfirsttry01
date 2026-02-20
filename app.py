@@ -26,13 +26,16 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 
 PAGE_SIZE = landscape(A4)
+
 app = Flask(__name__)
+
 if not os.environ.get("SECRET_KEY"):
     app.secret_key = "dev-secret-key"
 else:
     app.secret_key = os.environ.get("SECRET_KEY")
 
-app.secret_key = os.environ.get("SECRET_KEY")
+with app.app_context():
+    init_db()
 
 # === Upload config untuk dokumen sokongan leave ===
 LEAVE_UPLOAD_FOLDER = os.path.join("static", "uploads", "leave_docs")
@@ -438,9 +441,9 @@ def send_email_html(to_email, subject, html_content):
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
         
-@app.before_first_request
-def initialize_database():
-    init_db()
+# @app.before_first_request
+# def initialize_database():
+#     init_db()
     
 def auto_reset_mc_availability():
     today = date.today().isoformat()
@@ -5149,7 +5152,7 @@ def print_monthly_matrix_pdf():
         download_name=filename,
         mimetype="application/pdf"
     )
-
+    
 if __name__ == "__main__":
     init_db()
     app.run(debug=True, host="0.0.0.0", port=5000)
