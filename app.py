@@ -27,6 +27,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 PAGE_SIZE = landscape(A4)
 app = Flask(__name__)
+if not os.environ.get("SECRET_KEY"):
+    app.secret_key = "dev-secret-key"
+else:
+    app.secret_key = os.environ.get("SECRET_KEY")
 
 app.secret_key = os.environ.get("SECRET_KEY")
 
@@ -141,13 +145,9 @@ def is_postgres():
     return os.environ.get("DATABASE_URL") is not None
 
 def adapt_query(query):
-    """
-    Convert SQLite '?' placeholders to PostgreSQL '%s'
-    if using PostgreSQL.
-    """
     if is_postgres():
         return query.replace("?", "%s")
-    return query
+    return query.replace("%s", "?")
 
 def _add_column_if_missing(cur, table, name, coltype):
     if is_postgres():
@@ -165,22 +165,30 @@ def _add_column_if_missing(cur, table, name, coltype):
 
 
 def init_db():
-    """Create tables if missing and migrate columns if DB already exists."""
+    """Create tables for both PostgreSQL and SQLite"""
+
     conn = get_db()
     c = conn.cursor()
 
-    if is_postgres():
-        return
-
-    # Base tables
+    # ===== USERS TABLE =====
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             full_name TEXT NOT NULL,
             password_hash TEXT NOT NULL,
-            role TEXT NOT NULL CHECK(role IN ('admin','user')),
-            created_at TEXT NOT NULL
+            role TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            entitlement INTEGER DEFAULT 0,
+            department_id INTEGER,
+            position TEXT,
+            availability TEXT DEFAULT 'Available',
+            email TEXT,
+            phone TEXT,
+            ic_number TEXT,
+            address TEXT,
+            enrollment_date TEXT,
+            profile_photo TEXT
         )
     """))
     c.execute(
@@ -429,12 +437,10 @@ def send_email_html(to_email, subject, html_content):
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
-
-@app.before_request
-def ensure_db():
-    if not hasattr(app, "_db_initialized"):
-        init_db()
-        app._db_initialized = True
+        
+@app.before_first_request
+def initialize_database():
+    init_db()
     
 def auto_reset_mc_availability():
     today = date.today().isoformat()
