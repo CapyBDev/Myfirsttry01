@@ -107,7 +107,7 @@ def get_used_leave_days(user_id, year=None):
     params = [user_id]
 
     if year:
-        sql += " AND EXTRACT(YEAR FROM start_date::date) = %s"
+        sql += " AND EXTRACT(YEAR FROM DATE(start_date)) = %s"
         params.append(str(year))
 
     c.execute(adapt_query(sql), params)
@@ -131,13 +131,14 @@ def get_db():
     database_url = os.environ.get("DATABASE_URL")
 
     if database_url:
-        return psycopg2.connect(
+        conn = psycopg2.connect(
             database_url,
             sslmode="require",
             cursor_factory=RealDictCursor
         )
+        return conn
 
-    # fallback for local
+    # Local SQLite
     conn = sqlite3.connect("database.db")
     conn.row_factory = sqlite3.Row
     return conn
@@ -176,7 +177,7 @@ def init_db():
     # ===== USERS TABLE =====
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             full_name TEXT NOT NULL,
             password_hash TEXT NOT NULL,
@@ -196,7 +197,7 @@ def init_db():
     """))
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS leaves (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL,
             leave_type TEXT NOT NULL,
             start_date TEXT NOT NULL,
@@ -210,7 +211,7 @@ def init_db():
     """))
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS holidays (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
             date TEXT NOT NULL
         )
@@ -223,14 +224,14 @@ def init_db():
     """))
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS departments (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             name TEXT UNIQUE NOT NULL
         )
     """))
     
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS leave_logs (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             leave_id INTEGER NOT NULL,
             action TEXT NOT NULL,
             performed_by INTEGER NOT NULL,
@@ -243,7 +244,7 @@ def init_db():
     # 🌿 NEW: Leave Applications table (for workflow with checker & approver)
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS leave_applications (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL,
             full_name TEXT,
             position TEXT,
@@ -267,7 +268,7 @@ def init_db():
         # NEW: MC records table (medical certificates)
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS mc_records (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL,
             mc_number TEXT,
             start_date TEXT,
@@ -337,7 +338,7 @@ def init_db():
     )
     if not c.fetchone():
         c.execute(
-            adapt_query("INSERT INTO users (username, full_name, password_hash, role, created_at, entitlement) VALUES (?,?,?,?,?,?)"),
+            adapt_query("INSERT INTO users (username, full_name, password_hash, role, created_at, entitlement) VALUES (%s,%s,%s,%s,%s,%s)"),
             ("admin", "Administrator", generate_password_hash("admin123"), "admin",
              datetime.utcnow().isoformat(), 20)
         )
@@ -349,7 +350,7 @@ def init_db():
     if not c.fetchone():
         c.execute(
             adapt_query(
-            "INSERT INTO users (username, full_name, password_hash, role, created_at, entitlement) VALUES (?,?,?,?,?,?)"),
+            "INSERT INTO users (username, full_name, password_hash, role, created_at, entitlement) VALUES (%s,%s,%s,%s,%s,%s)"),
             ("user", "UserDash", generate_password_hash("password"), "user",
              datetime.utcnow().isoformat(), 14)
         )
@@ -363,7 +364,10 @@ def init_db():
             ("Labour Day", f"{date.today().year}-05-01"),
             ("Malaysia Day", f"{date.today().year}-09-16"),
         ]
-        c.executemany("INSERT INTO holidays (name, date) VALUES (?,?)", holidays)
+        c.executemany(
+            adapt_query("INSERT INTO holidays (name, date) VALUES (%s,%s)"), 
+            holidays
+            )
 
     conn.commit()
     conn.close()
@@ -455,7 +459,7 @@ def auto_reset_mc_availability():
             FROM mc_records m
             JOIN users u ON u.id = m.user_id
             WHERE m.end_date IS NOT NULL
-            AND m.end_date::date < %s::date
+            AND m.DATE(end_date) < DATE(%s)
             AND u.availability = 'MC'
         """), 
         (today,)
@@ -636,11 +640,11 @@ def admin_dashboard():
     params = []
 
     if year_filter != "all":
-        conditions.append("EXTRACT(YEAR FROM l.start_date::date) = %s")
+        conditions.append("EXTRACT(YEAR FROM l.DATE(start_date)) = %s")
         params.append(year_filter)
 
     if month_filter != "all":
-        conditions.append("EXTRACT(MONTH FROM l.start_date::date) = %s")
+        conditions.append("EXTRACT(MONTH FROM l.DATE(start_date)) = %s")
         params.append(month_filter)
 
     if dept_filter != "all":
@@ -652,8 +656,8 @@ def admin_dashboard():
     # ================= TREND GRAPH DATA =================
     cur.execute(
         adapt_query(f"""SELECT 
-            EXTRACT(YEAR FROM l.start_date::date) AS year,
-            EXTRACT(MONTH FROM l.start_date::date) AS month,
+            EXTRACT(YEAR FROM l.DATE(start_date)) AS year,
+            EXTRACT(MONTH FROM l.DATE(start_date)) AS month,
             COALESCE(d.name,'Unknown') AS department,
             COUNT(*) AS total
         FROM leave_applications l
@@ -669,11 +673,11 @@ def admin_dashboard():
 
     # ================= DROPDOWN VALUES =================
     cur.execute(
-        adapt_query("SELECT DISTINCT EXTRACT(YEAR FROM start_date::date) AS year FROM leave_applications"))
+        adapt_query("SELECT DISTINCT EXTRACT(YEAR FROM DATE(start_date)) AS year FROM leave_applications"))
     years = [r["year"] for r in cur.fetchall() if r["year"]]
 
     cur.execute(
-        adapt_query("SELECT DISTINCT EXTRACT(MONTH FROM start_date::date) AS month FROM leave_applications"))
+        adapt_query("SELECT DISTINCT EXTRACT(MONTH FROM DATE(start_date)) AS month FROM leave_applications"))
     months = [r["month"] for r in cur.fetchall() if r["month"]]
 
     cur.execute(
@@ -778,7 +782,7 @@ def download_employee_leave_report(user_id):
             FROM leave_applications
             WHERE user_id = %s
             AND status='Approved'
-            AND EXTRACT(YEAR FROM start_date::date) = %s
+            AND EXTRACT(YEAR FROM DATE(start_date)) = %s
             ORDER BY start_date
         """), 
         (user_id, year)
@@ -790,7 +794,7 @@ def download_employee_leave_report(user_id):
         adapt_query("""SELECT mc_number, start_date, end_date
             FROM mc_records
             WHERE user_id = %s
-            AND EXTRACT(YEAR FROM start_date::date) = %s
+            AND EXTRACT(YEAR FROM DATE(start_date)) = %s
             ORDER BY start_date
         """), 
         (user_id, year)
@@ -1004,13 +1008,13 @@ def admin_dashboard_view(filter):
 
     if filter == "month":
         title = "Leave Applications This Month"
-        base_query += " AND EXTRACT(MONTH FROM start_date::date) = EXTRACT(MONTH FROM CURRENT_DATE) "
+        base_query += " AND EXTRACT(MONTH FROM DATE(start_date)) = EXTRACT(MONTH FROM DATE('now')) "
 
     elif filter == "today":
         title = "Employees On Leave Today"
         base_query += """
             AND status='Approved'
-            AND CURRENT_DATE BETWEEN start_date::date AND end_date::date
+            AND DATE('now') BETWEEN DATE(start_date) AND DATE(end_date)
         """
 
     elif filter == "pending":
@@ -1047,17 +1051,17 @@ def admin_dashboard_view(filter):
     # ====== Tambah FILTER TARIKH (range start_date) ======
     # date_from & date_to format: YYYY-MM-DD (HTML input type="date")
     if date_from and date_to:
-        base_query += " AND start_date::date BETWEEN %s::date AND %s::date "
+        base_query += " AND DATE(start_date) BETWEEN DATE(%s) AND DATE(%s) "
         params.extend([date_from, date_to])
     elif date_from:
-        base_query += " AND start_date::date >= %s::date "
+        base_query += " AND DATE(start_date) >= DATE(%s) "
         params.append(date_from)
     elif date_to:
-        base_query += " AND start_date::date <= %s::date "
+        base_query += " AND DATE(start_date) <= DATE(%s) "
         params.append(date_to)
 
     # Susun ikut tarikh
-    base_query += " ORDER BY start_date::date DESC "
+    base_query += " ORDER BY DATE(start_date) DESC "
 
     c.execute(adapt_query(base_query), params)
     rows = c.fetchall()
@@ -1115,10 +1119,10 @@ def view_all_leave_report():
     params = []
 
     if month:
-        query += " AND TO_CHAR(la.start_date::date, 'YYYY-MM')=%s"
+        query += " AND TO_CHAR(DATE(la.start_date), 'YYYY-MM')=%s"
         params.append(month)
     elif year:
-        query += " AND EXTRACT(YEAR FROM la.start_date::date)=%s"
+        query += " AND EXTRACT(YEAR FROM DATE(la.start_date))=%s"
         params.append(year)
 
     query += " GROUP BY la.user_id ORDER BY la.full_name"
@@ -1142,13 +1146,13 @@ def get_dashboard_data(date_from=None, date_to=None):
     c.execute(
         adapt_query("""SELECT
             COUNT(*) FILTER (
-                WHERE EXTRACT(MONTH FROM start_date::date) =
-                    EXTRACT(MONTH FROM CURRENT_DATE)
+                WHERE EXTRACT(MONTH FROM DATE(start_date)) =
+                    EXTRACT(MONTH FROM DATE('now'))
             ) AS total_this_month,
 
             COUNT(*) FILTER (
                 WHERE status='Approved'
-                AND CURRENT_DATE BETWEEN start_date::date AND end_date::date
+                AND DATE('now') BETWEEN DATE(start_date) AND DATE(end_date)
             ) AS leave_today,
 
             COUNT(*) FILTER (
@@ -1193,7 +1197,7 @@ def get_dashboard_data(date_from=None, date_to=None):
         LEFT JOIN users u ON u.id = la.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE la.status = 'Approved'
-        AND CURRENT_DATE BETWEEN la.start_date::date AND la.end_date::date
+        AND DATE('now') BETWEEN DATE(la.start_date) AND la.DATE(end_date)
     """))
     on_leave_today = c.fetchall()
 
@@ -1215,11 +1219,11 @@ def get_dashboard_data(date_from=None, date_to=None):
     # ===================== TREND (WEEKLY) ========================
     c.execute(
         adapt_query("""SELECT 
-            TO_CHAR(start_date::date, 'DD/MM') AS label,
+            TO_CHAR(DATE(start_date), 'DD/MM') AS label,
             COUNT(*) AS total
         FROM leave_applications
-        WHERE start_date::date >= CURRENT_DATE - INTERVAL '7 days'
-        GROUP BY start_date::date
+        WHERE DATE(start_date) >= DATE('now') - INTERVAL '7 days'
+        GROUP BY DATE(start_date)
     """))
 
     t = c.fetchall()
@@ -1246,7 +1250,7 @@ def get_dashboard_data(date_from=None, date_to=None):
     # ===================== MC COUNT PER MONTH =====================
     c.execute(
         adapt_query("""SELECT 
-            TO_CHAR(created_at::date, 'MM/YYYY') AS label,
+            TO_CHAR(DATE(created_at), 'MM/YYYY') AS label,
             COUNT(*) AS total
         FROM mc_records
         GROUP BY label
@@ -1261,9 +1265,9 @@ def get_dashboard_data(date_from=None, date_to=None):
     # ===================== APPROVED / REJECTED DETAILS ===========
     range_clauses = []
     if date_from:
-        range_clauses.append("start_date::date >= %s::date")
+        range_clauses.append("DATE(start_date) >= DATE(%s)")
     if date_to:
-        range_clauses.append("start_date::date <= %s::date")
+        range_clauses.append("DATE(start_date) <= DATE(%s)")
 
     where_range = ""
     if range_clauses:
@@ -1280,7 +1284,7 @@ def get_dashboard_data(date_from=None, date_to=None):
         adapt_query("""SELECT id, full_name, leave_type, start_date, end_date, status
         FROM leave_applications
         WHERE status = 'Rejected' """ + where_range + """
-        ORDER BY start_date::date DESC
+        ORDER BY DATE(start_date) DESC
         LIMIT 10
     """), params_rej
     )
@@ -1297,7 +1301,7 @@ def get_dashboard_data(date_from=None, date_to=None):
         adapt_query("""SELECT id, full_name, leave_type, start_date, end_date, status
         FROM leave_applications
         WHERE status = 'Approved' """ + where_range + """
-        ORDER BY start_date::date DESC
+        ORDER BY DATE(start_date) DESC
         LIMIT 10
     """), params_app
     )
@@ -1336,7 +1340,7 @@ def get_leave_data(mode):
             SELECT u.full_name, l.leave_type, l.start_date, l.end_date, l.status
             FROM leaves l
             JOIN users u ON l.user_id = u.id
-            WHERE l.start_date::date >= CURRENT_DATE - INTERVAL '7 days'
+            WHERE l.DATE(start_date) >= DATE('now') - INTERVAL '7 days'
             ORDER BY l.start_date ASC
         """
     else:  # alphabetical
@@ -1386,7 +1390,7 @@ def manage_users():
                     SELECT 1 FROM leave_applications la
                     WHERE la.user_id = u.id
                     AND la.status = 'Approved'
-                    AND %s::date BETWEEN la.start_date AND la.end_date
+                    AND DATE(%s) BETWEEN la.start_date AND la.end_date
                 ) THEN 'On Leave'
                 ELSE COALESCE(u.availability, 'Available')
             END AS availability,
@@ -1417,7 +1421,7 @@ def manage_users():
                         SELECT 1 FROM leave_applications la
                         WHERE la.user_id = u.id
                         AND la.status = 'Approved'
-                        AND %s::date BETWEEN la.start_date AND la.end_date
+                        AND DATE(%s) BETWEEN la.start_date AND la.end_date
                     ) THEN 'On Leave'
                     ELSE COALESCE(u.availability, 'Available')
                 END
@@ -1595,7 +1599,7 @@ def upload_mc():
     try:
         c.execute(
             adapt_query("""INSERT INTO mc_records (user_id, mc_number, start_date, end_date, pdf_path, uploaded_by, created_at)
-            VALUES (?,?,?,?,?,?,?)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
         """), (user_id, mc_number, mc_start, mc_end, save_name, session.get("user_id"), datetime.utcnow().isoformat()))
 
         c.execute(
@@ -1624,23 +1628,23 @@ def mc_trend_api():
         # 🗓️ Last 7 days (including today)
         c.execute(
             adapt_query("""SELECT 
-                TO_CHAR(created_at::date, 'DD/MM') AS label,
+                TO_CHAR(DATE(created_at), 'DD/MM') AS label,
                 COUNT(*) AS total
             FROM mc_records
-            WHERE created_at::date >= CURRENT_DATE - INTERVAL '6 days'
-            GROUP BY created_at::date
-            ORDER BY created_at::date
+            WHERE DATE(created_at) >= DATE('now') - INTERVAL '6 days'
+            GROUP BY DATE(created_at)
+            ORDER BY DATE(created_at)
         """))
     else:
         # 🗓️ Last 6 months
         c.execute(
             adapt_query("""SELECT 
-                TO_CHAR(created_at::date, 'MM/YYYY') AS label,
+                TO_CHAR(DATE(created_at), 'MM/YYYY') AS label,
                 COUNT(*) AS total
             FROM mc_records
-            WHERE created_at::date >= CURRENT_DATE - INTERVAL '5 months'
-            GROUP BY TO_CHAR(created_at::date, 'YYYY-MM')
-            ORDER BY TO_CHAR(created_at::date, 'YYYY-MM')
+            WHERE DATE(created_at) >= DATE('now') - INTERVAL '5 months'
+            GROUP BY TO_CHAR(DATE(created_at), 'YYYY-MM')
+            ORDER BY TO_CHAR(DATE(created_at), 'YYYY-MM')
         """))
 
     rows = c.fetchall()
@@ -1724,7 +1728,7 @@ def create_user():
                 ic_number,
                 address
             )
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """), (
             username,
             full_name,
@@ -1908,7 +1912,7 @@ def manage_leaves():
             JOIN users u ON u.id = la.user_id
             LEFT JOIN departments d ON u.department_id = d.id
             WHERE la.status = 'Approved'
-            AND EXTRACT(YEAR FROM la.start_date::date) = %s
+            AND EXTRACT(YEAR FROM la.DATE(start_date)) = %s
             {dept_filter}
             ORDER BY u.full_name, la.start_date
         """), params
@@ -2007,8 +2011,8 @@ def manage_leaves():
         JOIN users u ON u.id = la.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE la.status='Approved'
-        AND la.start_date::date <= %s
-        AND la.end_date::date >= %s
+        AND la.DATE(start_date) <= %s
+        AND la.DATE(end_date) >= %s
         {dept_filter}
         ORDER BY u.full_name
     """), params
@@ -2049,8 +2053,8 @@ def manage_leaves():
         FROM mc_records m
         JOIN users u ON u.id = m.user_id
         LEFT JOIN departments d ON u.department_id = d.id
-        WHERE m.start_date::date <= %s
-        AND m.end_date::date >= %s
+        WHERE m.DATE(start_date) <= %s
+        AND m.DATE(end_date) >= %s
         {dept_filter}
     """), params
     )
@@ -2151,11 +2155,11 @@ def completed_leaves_pdf():
         params.append(dept)
 
     if year:
-        query += " AND EXTRACT(YEAR FROM la.start_date::date)  = %s"
+        query += " AND EXTRACT(YEAR FROM la.DATE(start_date))  = %s"
         params.append(year)
 
     if month:
-        query += " AND EXTRACT(MONTH FROM la.start_date::date) = %s"
+        query += " AND EXTRACT(MONTH FROM la.DATE(start_date)) = %s"
         params.append(month)
 
     if status:
@@ -2190,13 +2194,13 @@ def get_leave_matrix_report(year, department_id=None, user_id=None):
             u.id AS user_id,
             u.full_name,
             la.leave_type,
-            CAST(EXTRACT(MONTH FROM la.start_date::date) AS INTEGER) AS month_no,
+            CAST(EXTRACT(MONTH FROM la.DATE(start_date)) AS INTEGER) AS month_no,
             SUM(la.total_days) AS days_used,
             u.entitlement
         FROM leave_applications la
         JOIN users u ON u.id = la.user_id
         WHERE la.status = 'Approved'
-        AND EXTRACT(YEAR FROM la.start_date::date)  = %s
+        AND EXTRACT(YEAR FROM la.DATE(start_date))  = %s
     """
     params = [year]
 
@@ -2277,7 +2281,7 @@ def download_leave_report_excel():
         d.name AS department,
         COALESCE(
           SUM(
-            (l.end_date::date - l.start_date::date) + 1
+            (l.DATE(end_date) - l.DATE(start_date)) + 1
         ), 0
         ) AS used
       FROM users u
@@ -2285,7 +2289,7 @@ def download_leave_report_excel():
       LEFT JOIN leaves l
         ON l.user_id = u.id
        AND l.status = 'Approved'
-       AND EXTRACT(YEAR FROM l.start_date::date)  = %s
+       AND EXTRACT(YEAR FROM l.DATE(start_date))  = %s
     """
 
     params = [year]
@@ -2336,7 +2340,7 @@ def download_leave_report_pdf():
         d.name AS department,
         COALESCE(
             SUM(
-            (l.end_date::date - l.start_date::date) + 1
+            (l.DATE(end_date) - l.DATE(start_date)) + 1
             )
             , 0
         ) AS used
@@ -2345,7 +2349,7 @@ def download_leave_report_pdf():
       LEFT JOIN leaves l
         ON l.user_id = u.id
        AND l.status = 'Approved'
-       AND EXTRACT(YEAR FROM l.start_date::date)  = %s
+       AND EXTRACT(YEAR FROM l.DATE(start_date))  = %s
     """
     params = [year]
 
@@ -2467,13 +2471,13 @@ def get_leave_report(report_type="monthly", month=None):
     c = conn.cursor()
 
     if month:
-        where_clause = "TO_CHAR(la.start_date::date, 'YYYY-MM')  = %s"
+        where_clause = "TO_CHAR(la.DATE(start_date), 'YYYY-MM')  = %s"
         params = [month]
     elif report_type == "yearly":
-        where_clause = "EXTRACT(YEAR FROM la.start_date::date) = EXTRACT(YEAR FROM CURRENT_DATE)"
+        where_clause = "EXTRACT(YEAR FROM la.DATE(start_date)) = EXTRACT(YEAR FROM DATE('now'))"
         params = []
     else:
-        where_clause = "TO_CHAR(la.start_date::date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')"
+        where_clause = "TO_CHAR(la.DATE(start_date), 'YYYY-MM') = TO_CHAR(DATE('now'), 'YYYY-MM')"
         params = []
 
     c.execute(
@@ -2501,9 +2505,9 @@ def get_all_employee_leaves(view="monthly"):
     c = conn.cursor()
 
     if view == "weekly":
-        where_clause = "start_date::date >= CURRENT_DATE - INTERVAL '7 days'"
+        where_clause = "DATE(start_date) >= DATE('now') - INTERVAL '7 days'"
     else:  # monthly
-        where_clause = "TO_CHAR(start_date::date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')"
+        where_clause = "TO_CHAR(DATE(start_date), 'YYYY-MM') = TO_CHAR(DATE('now'), 'YYYY-MM')"
 
     c.execute(
         adapt_query(f"""SELECT
@@ -2668,7 +2672,7 @@ def holidays():
         day = request.form.get("date", "").strip()
         if name and day:
             c.execute(
-                adapt_query("INSERT INTO holidays (name, date) VALUES (?,?)"), 
+                adapt_query("INSERT INTO holidays (name, date) VALUES (%s,%s)"), 
                 (name, day)
             )
             conn.commit()
@@ -3087,7 +3091,7 @@ def user_upload_mc():
     c.execute(
         adapt_query("""INSERT INTO mc_records
         (user_id, mc_number, start_date, end_date, pdf_path, uploaded_by, created_at)
-        VALUES (?,?,?,?,?,?,?)
+        VALUES (%s,%s,%s,%s,%s,%s,%s)
     """), (
         session["user_id"],
         mc_number,
@@ -3215,7 +3219,7 @@ def apply_leave():
             adapt_query("""INSERT INTO leave_applications
             (user_id, full_name, position, leave_type, start_date, end_date,
             total_days, reason, contact_address, contact_phone, status, checker_name, approver_name, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """), (
             user_id,
             full_name,
@@ -3598,9 +3602,9 @@ def settings():
         org_name = request.form.get("org_name", "J-Leave App")
         theme = request.form.get("theme", "blue")
         c.execute(
-            adapt_query("INSERT INTO settings (key, value) VALUES ('org_name', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (org_name,)))
+            adapt_query("INSERT INTO settings (key, value) VALUES ('org_name', %s) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (org_name,)))
         c.execute(
-            adapt_query("INSERT INTO settings (key, value) VALUES ('theme', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (theme,)))
+            adapt_query("INSERT INTO settings (key, value) VALUES ('theme', %s) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (theme,)))
         conn.commit()
         conn.close()
         flash("Settings saved.", "success")
@@ -4044,7 +4048,7 @@ def view_individual_leave_report(user_id):
         FROM leave_applications
         WHERE user_id = %s
           AND status = 'Approved'
-          AND EXTRACT(YEAR FROM la.start_date::date)  = %s
+          AND EXTRACT(YEAR FROM la.DATE(start_date))  = %s
         ORDER BY start_date
     """), (user_id, year)
     )
@@ -4055,7 +4059,7 @@ def view_individual_leave_report(user_id):
         adapt_query("""SELECT mc_number, start_date, end_date
         FROM mc_records
         WHERE user_id = %s
-          AND EXTRACT(YEAR FROM start_date::date) = %s
+          AND EXTRACT(YEAR FROM DATE(start_date)) = %s
         ORDER BY start_date
     """), (user_id, year)
     )
@@ -4221,7 +4225,7 @@ def build_individual_leave_report(user_id, year):
         FROM leave_applications
         WHERE user_id = %s
           AND status = 'Approved'
-          AND EXTRACT(YEAR FROM start_date::date) = %s
+          AND EXTRACT(YEAR FROM DATE(start_date)) = %s
     """), (user_id, int(year))
     )
 
@@ -4424,8 +4428,8 @@ def get_leave_report_data(year, month, department):
         JOIN users u ON u.id = la.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE la.status = 'Approved'
-          AND la.start_date::date <= %s
-          AND la.end_date::date >= %s
+          AND la.DATE(start_date) <= %s
+          AND la.DATE(end_date) >= %s
           {dept_filter}
         ORDER BY u.full_name, la.start_date
     """), params
@@ -4472,7 +4476,7 @@ def get_leave_report_data(year, month, department):
     cur.execute(
         adapt_query("""SELECT user_id, start_date, end_date
         FROM mc_records
-        WHERE start_date::date <= %s
+        WHERE DATE(start_date) <= %s
           AND end_date >= %s
     """), (
         last_day.strftime("%Y-%m-%d"),
@@ -4542,8 +4546,8 @@ def preview_leave_report_department():
         JOIN users u ON u.id = la.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE la.status = 'Approved'
-          AND la.start_date::date <= %s
-          AND la.end_date::date >= %s
+          AND la.DATE(start_date) <= %s
+          AND la.DATE(end_date) >= %s
           {dept_filter}
         ORDER BY u.full_name, la.start_date
     """), params
@@ -4597,8 +4601,8 @@ def preview_leave_report_department():
             m.start_date,
             m.end_date
         FROM mc_records m
-        WHERE m.start_date::date <= %s
-          AND m.end_date::date >= %s
+        WHERE m.DATE(start_date) <= %s
+          AND m.DATE(end_date) >= %s
     """), (
         last_day.strftime("%Y-%m-%d"),
         first_day.strftime("%Y-%m-%d")
@@ -4678,8 +4682,8 @@ def team_leave_pdf():
         JOIN users u ON u.id = la.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE la.status='Approved'
-          AND la.start_date::date <= %s
-          AND la.end_date::date >= %s
+          AND la.DATE(start_date) <= %s
+          AND la.DATE(end_date) >= %s
           {dept_filter}
         ORDER BY u.full_name, la.start_date
     """), params
@@ -4720,7 +4724,7 @@ def team_leave_pdf():
     cur.execute(
         adapt_query("""SELECT user_id, start_date, end_date
         FROM mc_records
-        WHERE start_date::date <= %s AND end_date::date >= %s
+        WHERE DATE(start_date) <= %s AND DATE(end_date) >= %s
     """), 
         (last_day.strftime("%Y-%m-%d"), first_day.strftime("%Y-%m-%d"))
     )
@@ -5027,8 +5031,8 @@ def print_monthly_matrix_pdf():
         JOIN users u ON u.id = la.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE la.status='Approved'
-          AND la.start_date::date <= %s
-          AND la.end_date::date >= %s
+          AND la.DATE(start_date) <= %s
+          AND la.DATE(end_date) >= %s
           {dept_filter}
         ORDER BY u.full_name
     """), params
@@ -5066,8 +5070,8 @@ def print_monthly_matrix_pdf():
         FROM mc_records m
         JOIN users u ON u.id = m.user_id
         LEFT JOIN departments d ON u.department_id = d.id
-        WHERE m.start_date::date <= %s
-          AND m.end_date::date >= %s
+        WHERE m.DATE(start_date) <= %s
+          AND m.DATE(end_date) >= %s
           {dept_filter}
     """), params
     )
