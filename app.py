@@ -34,6 +34,9 @@ if not os.environ.get("SECRET_KEY"):
 else:
     app.secret_key = os.environ.get("SECRET_KEY")
 
+# Initialize database at startup (Flask 3 compatible)
+with app.app_context():
+    init_db()
 
 # === Upload config untuk dokumen sokongan leave ===
 LEAVE_UPLOAD_FOLDER = os.path.join("static", "uploads", "leave_docs")
@@ -177,7 +180,7 @@ def init_db():
     # ===== USERS TABLE =====
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             full_name TEXT NOT NULL,
             password_hash TEXT NOT NULL,
@@ -197,7 +200,7 @@ def init_db():
     """))
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS leaves (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             leave_type TEXT NOT NULL,
             start_date TEXT NOT NULL,
@@ -211,7 +214,7 @@ def init_db():
     """))
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS holidays (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             date TEXT NOT NULL
         )
@@ -224,14 +227,14 @@ def init_db():
     """))
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS departments (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             name TEXT UNIQUE NOT NULL
         )
     """))
     
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS leave_logs (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             leave_id INTEGER NOT NULL,
             action TEXT NOT NULL,
             performed_by INTEGER NOT NULL,
@@ -244,7 +247,7 @@ def init_db():
     # 🌿 NEW: Leave Applications table (for workflow with checker & approver)
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS leave_applications (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             full_name TEXT,
             position TEXT,
@@ -268,7 +271,7 @@ def init_db():
         # NEW: MC records table (medical certificates)
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS mc_records (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             mc_number TEXT,
             start_date TEXT,
@@ -455,9 +458,9 @@ def send_email_html(to_email, subject, html_content):
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
         
-@app.before_first_request
-def initialize_database():
-    init_db()
+# @app.before_request
+# def initialize_database():
+#     init_db()
     
 def auto_reset_mc_availability():
     today = date.today().isoformat()
