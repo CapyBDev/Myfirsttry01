@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 
 # ---------- CONFIG ----------
 SQLITE_DB = "database.db"
-POSTGRES_URL = "postgresql://hrleave_db_user:HUrl5S7Wb0JcW0Hi1qvPbhAw8jxMjheO@dpg-d65thqfgi27c73a56it0-a.singapore-postgres.render.com/hrleave_db"
+POSTGRES_URL = "postgresql://jleave_db_k1we_user:tyXXfE4OfKGBEHLE6OYLahFupl48cpkP@dpg-d6drgr14tr6s73d1m55g-a.singapore-postgres.render.com/jleave_db_k1we"
 # ----------------------------
 
 # Connect SQLite
@@ -32,8 +32,8 @@ for table in tables:
     df.to_sql(
         table,
         pg_engine,
-        if_exists="append",
+        if_exists="append",   
         index=False
     )
 
-print("✅ Migration completed successfully")
+print(" Migration completed successfully")
