@@ -455,9 +455,9 @@ def send_email_html(to_email, subject, html_content):
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
         
-# @app.before_first_request
-# def initialize_database():
-#     init_db()
+@app.before_first_request
+def initialize_database():
+    init_db()
     
 def auto_reset_mc_availability():
     today = date.today().isoformat()
