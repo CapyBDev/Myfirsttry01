@@ -652,11 +652,11 @@ def admin_dashboard():
     params = []
 
     if year_filter != "all":
-        conditions.append("EXTRACT(YEAR FROM l.DATE(start_date)) = %s")
+        conditions.append("EXTRACT(YEAR FROM DATE(l.start_date)) = %s")
         params.append(year_filter)
 
     if month_filter != "all":
-        conditions.append("EXTRACT(MONTH FROM l.DATE(start_date)) = %s")
+        conditions.append("EXTRACT(MONTH FROM DATE(1.start_date)) = %s")
         params.append(month_filter)
 
     if dept_filter != "all":
@@ -668,8 +668,8 @@ def admin_dashboard():
     # ================= TREND GRAPH DATA =================
     cur.execute(
         adapt_query(f"""SELECT 
-            EXTRACT(YEAR FROM l.DATE(start_date)) AS year,
-            EXTRACT(MONTH FROM l.DATE(start_date)) AS month,
+            EXTRACT(YEAR FROM DATE(l.start_date)) AS year,
+            EXTRACT(MONTH FROM DATE(l.start_date)) AS month,
             COALESCE(d.name,'Unknown') AS department,
             COUNT(*) AS total
         FROM leave_applications l
@@ -1352,7 +1352,7 @@ def get_leave_data(mode):
             SELECT u.full_name, l.leave_type, l.start_date, l.end_date, l.status
             FROM leaves l
             JOIN users u ON l.user_id = u.id
-            WHERE l.DATE(start_date) >= CURRENT_DATE - INTERVAL '7 days'
+            WHERE DATE(l.start_date) >= CURRENT_DATE - INTERVAL '7 days'
             ORDER BY l.start_date ASC
         """
     else:  # alphabetical
@@ -2293,7 +2293,7 @@ def download_leave_report_excel():
         d.name AS department,
         COALESCE(
           SUM(
-            (l.DATE(end_date) - l.DATE(start_date)) + 1
+            (DATE(1.end_date) - DATE(l.start_date)) + 1
         ), 0
         ) AS used
       FROM users u
@@ -2301,7 +2301,7 @@ def download_leave_report_excel():
       LEFT JOIN leaves l
         ON l.user_id = u.id
        AND l.status = 'Approved'
-       AND EXTRACT(YEAR FROM l.DATE(start_date))  = %s
+       AND EXTRACT(YEAR FROM DATE(1.start_date))  = %s
     """
 
     params = [year]
@@ -2352,7 +2352,7 @@ def download_leave_report_pdf():
         d.name AS department,
         COALESCE(
             SUM(
-            (l.DATE(end_date) - l.DATE(start_date)) + 1
+            (DATE(l.end_date) - DATE(l.start_date)) + 1
             )
             , 0
         ) AS used
@@ -2361,7 +2361,7 @@ def download_leave_report_pdf():
       LEFT JOIN leaves l
         ON l.user_id = u.id
        AND l.status = 'Approved'
-       AND EXTRACT(YEAR FROM l.DATE(start_date))  = %s
+       AND EXTRACT(YEAR FROM DATE(l.start_date))  = %s
     """
     params = [year]
 
