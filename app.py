@@ -1018,14 +1018,14 @@ def admin_dashboard_view(filter):
     conn = get_db()
     c = conn.cursor()
 
-    # ====== Ambil nilai filter dari query string ======
+
     filter_type     = request.args.get("type", "").strip()
     filter_position = request.args.get("position", "").strip()
     filter_alpha    = request.args.get("alpha", "").strip()     # A, B, C...
     date_from       = request.args.get("date_from", "").strip()
     date_to         = request.args.get("date_to", "").strip()
 
-    # ====== Base query ikut "filter" dalam URL (today/month/pending...) ======
+
     base_query = "SELECT * FROM leave_applications WHERE 1=1 "
     params = []
 
@@ -1044,7 +1044,6 @@ def admin_dashboard_view(filter):
         title = "Pending Leave Requests"
         base_query += " AND status IN ('Pending Recommender','Pending Approval') "
 
-    # 🔹 TAMBAH BAHAGIAN INI
     elif filter == "approved":
         title = "Approved Leave Requests"
         base_query += " AND status='Approved' "
@@ -1056,23 +1055,20 @@ def admin_dashboard_view(filter):
     else:
         title = "Leave Details"
 
-    # ====== Tambah FILTER TYPE (leave_type) ======
     if filter_type:
         base_query += " AND leave_type = %s "
         params.append(filter_type)
 
-    # ====== Tambah FILTER POSITION ======
+    
     if filter_position:
         base_query += " AND position = %s "
         params.append(filter_position)
 
-    # ====== Tambah FILTER ALPHABET NAMA (full_name bermula dengan huruf) ======
+
     if filter_alpha:
         base_query += " AND full_name LIKE %s "
         params.append(f"{filter_alpha}%")
 
-    # ====== Tambah FILTER TARIKH (range start_date) ======
-    # date_from & date_to format: YYYY-MM-DD (HTML input type="date")
     if date_from and date_to:
         base_query += " AND DATE(start_date) BETWEEN DATE(%s) AND DATE(%s) "
         params.extend([date_from, date_to])
@@ -1083,22 +1079,16 @@ def admin_dashboard_view(filter):
         base_query += " AND DATE(start_date) <= DATE(%s) "
         params.append(date_to)
 
-    # Susun ikut tarikh
     base_query += " ORDER BY DATE(start_date) DESC "
 
     c.execute(adapt_query(base_query), params)
-    rows = c.fetchall()
-
-    # ====== Data untuk dropdown filter (type & position) ======
-    c.execute(
-        adapt_query("SELECT DISTINCT leave_type FROM leave_applications WHERE leave_type IS NOT NULL"))
-
+    leaves = c.fetchall()
+    
+    c.execute(adapt_query("SELECT DISTINCT leave_type FROM leave_applications WHERE leave_type IS NOT NULL"))
     rows = c.fetchall()
     leave_types = [r["leave_type"] for r in rows]
 
-    c.execute(
-        adapt_query("SELECT DISTINCT position FROM leave_applications WHERE position IS NOT NULL"))
-
+    c.execute(adapt_query("SELECT DISTINCT position FROM leave_applications WHERE position IS NOT NULL"))
     rows = c.fetchall()
     positions = [r["position"] for r in rows]
 
@@ -1107,10 +1097,9 @@ def admin_dashboard_view(filter):
     return render_template(
         "admin_dashboard_detail.html",
         title=title,
-        leaves=rows,
+        leaves=leaves,
         leave_types=leave_types,
         positions=positions,
-        # untuk isi semula value dalam form
         filter_type=filter_type,
         filter_position=filter_position,
         filter_alpha=filter_alpha,
@@ -1965,7 +1954,11 @@ def manage_leaves():
             # ===== CALCULATE WORKING DAYS =====
             days = calculate_working_days(r["start_date"], r["end_date"])
 
-            start = datetime.strptime(r["start_date"], "%Y-%m-%d")
+            if isinstance(r["start_date"], str):
+                    start = datetime.strptime(r["start_date"], "%Y-%m-%d")
+            else:
+                start = r["start_date"]
+
             m = MONTH_MAP[start.strftime("%m")]
 
             # ===== ACCUMULATE USED =====
@@ -2050,8 +2043,15 @@ def manage_leaves():
             "leaves": {}
         })
 
-        start = datetime.strptime(r["start_date"], "%Y-%m-%d")
-        end   = datetime.strptime(r["end_date"], "%Y-%m-%d")
+        if isinstance(r["start_date"], str):
+            start = datetime.strptime(r["start_date"], "%Y-%m-%d")
+        else:
+            start = r["start_date"]
+
+        if isinstance(r["end_date"], str):
+            end = datetime.strptime(r["end_date"], "%Y-%m-%d")
+        else:
+            end = r["end_date"]
 
         cur_day = max(start, first_day)
         while cur_day <= min(end, last_day):
@@ -5070,8 +5070,15 @@ def print_monthly_matrix_pdf():
         uid = r["user_id"]
         users.setdefault(uid, {"user_name": r["full_name"], "leaves": {}})
 
-        start = datetime.strptime(r["start_date"], "%Y-%m-%d")
-        end   = datetime.strptime(r["end_date"], "%Y-%m-%d")
+        if isinstance(r["start_date"], str):
+            start = datetime.strptime(r["start_date"], "%Y-%m-%d")
+        else:
+            start = r["start_date"]
+
+        if isinstance(r["end_date"], str):
+            end = datetime.strptime(r["end_date"], "%Y-%m-%d")
+        else:
+            end = r["end_date"]
 
         cur_day = max(start, first_day)
         while cur_day <= min(end, last_day):
