@@ -467,17 +467,16 @@ def auto_reset_mc_availability():
     conn = get_db()
     c = conn.cursor()
 
-    c.execute(
-        adapt_query("""SELECT DISTINCT u.id
-            FROM mc_records m
-            JOIN users u ON u.id = m.user_id
-            WHERE m.end_date IS NOT NULL
-            AND DATE(m.end_date) < DATE(%s)
-            AND u.availability = 'MC'
-        """), 
-        (today,)
-    )
+    query = adapt_query("""
+        SELECT DISTINCT u.id
+        FROM mc_records m
+        JOIN users u ON u.id = m.user_id
+        WHERE m.end_date IS NOT NULL
+        AND DATE(m.end_date) < DATE(%s)
+        AND u.availability = 'MC'
+    """)
 
+    c.execute(query, (today,))
     users_to_reset = c.fetchall()
 
     for u in users_to_reset:
@@ -3524,7 +3523,6 @@ def profile():
     """)
 
     c.execute(query, (session["user_id"],))
-
     user = c.fetchone()
 
     entitlement = user["entitlement"] or 0
