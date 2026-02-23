@@ -69,28 +69,35 @@ POSITION_HIERARCHY = {
 }
 
 def calculate_working_days(start_date, end_date):
-    """Return number of working days between start & end, 
+    """Return number of working days between start & end,
     excluding Sat/Sun & public holidays."""
+
     conn = get_db()
     c = conn.cursor()
-    c.execute(
-        adapt_query("SELECT date FROM holidays")
-    )
+    c.execute(adapt_query("SELECT date FROM holidays"))
     holiday_rows = c.fetchall()
     holidays = {h["date"] for h in holiday_rows}
     conn.close()
+    
+    if isinstance(start_date, str):
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+    else:
+        start = start_date
 
-    start = datetime.strptime(start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    if isinstance(end_date, str):
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    else:
+        end = end_date
 
     count = 0
     current = start
 
     while current <= end:
-        if current.weekday() < 5:  # 0=Mon ... 4=Fri
+        if current.weekday() < 5:
             if current.isoformat() not in holidays:
                 count += 1
         current += timedelta(days=1)
+
     return count
 
 def get_used_leave_days(user_id, year=None):
