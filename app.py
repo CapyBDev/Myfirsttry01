@@ -98,7 +98,7 @@ def get_used_leave_days(user_id, year=None):
     c = conn.cursor()
 
     sql = """
-        SELECT COALESCE(SUM(total_days), 0)
+        SELECT COALESCE(SUM(total_days), 0) AS total
         FROM leave_applications
         WHERE user_id = %s
           AND status = 'Approved'
@@ -108,13 +108,17 @@ def get_used_leave_days(user_id, year=None):
 
     if year:
         sql += " AND EXTRACT(YEAR FROM DATE(start_date)) = %s"
-        params.append(str(year))
+        params.append(int(year))
 
     c.execute(adapt_query(sql), params)
-    used = c.fetchone()["total"]
+
+    row = c.fetchone()
+    used = row["total"] if row and row["total"] is not None else 0
+
     conn.close()
 
     return used
+
 
 def get_next_position(position):
     """Return next higher position for approval or checking chain."""
