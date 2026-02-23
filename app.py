@@ -34,9 +34,6 @@ if not os.environ.get("SECRET_KEY"):
 else:
     app.secret_key = os.environ.get("SECRET_KEY")
 
-# Initialize database at startup (Flask 3 compatible)
-with app.app_context():
-    init_db()
 
 # === Upload config untuk dokumen sokongan leave ===
 LEAVE_UPLOAD_FOLDER = os.path.join("static", "uploads", "leave_docs")
@@ -438,7 +435,10 @@ def build_reset_email(reset_link):
     </body>
     </html>
     """
-
+# Initialize database at startup (Flask 3 compatible)
+with app.app_context():
+    init_db()
+    
 import smtplib
 from email.message import EmailMessage
 
