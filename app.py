@@ -78,7 +78,7 @@ def calculate_working_days(start_date, end_date):
     holiday_rows = c.fetchall()
     holidays = {h["date"] for h in holiday_rows}
     conn.close()
-    
+
     if isinstance(start_date, str):
         start = datetime.strptime(start_date, "%Y-%m-%d").date()
     else:
