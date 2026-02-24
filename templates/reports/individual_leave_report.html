@@ -235,7 +235,10 @@ INDIVIDUAL REPORT – {{ year }}
 {% for m in months %}
 {% set ns = namespace(list=[]) %}
 {% for l in approved_leaves %}
-{% if l.start_date and (l.start_date[5:7]==month_map[m] or l.end_date[5:7]==month_map[m]) %}
+{% if l.start_date and (
+    l.start_date.strftime('%m') == month_map[m] 
+    or l.end_date.strftime('%m') == month_map[m]
+) %}
 {% set _=ns.list.append(l) %}
 {% endif %}
 {% endfor %}
@@ -266,7 +269,10 @@ INDIVIDUAL REPORT – {{ year }}
 {% for m in months %}
 {% set ns = namespace(list=[]) %}
 {% for mc in mc_records %}
-{% if mc.start_date and (mc.start_date[5:7]==month_map[m] or mc.end_date[5:7]==month_map[m]) %}
+{% if mc.start_date and (
+    mc.start_date.strftime('%m') == month_map[m] 
+    or mc.end_date.strftime('%m') == month_map[m]
+) %}
 {% set _=ns.list.append(mc) %}
 {% endif %}
 {% endfor %}
