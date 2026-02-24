@@ -4357,7 +4357,7 @@ def view_individual_leave_report(user_id):
         FROM leave_applications
         WHERE user_id = %s
           AND status = 'Approved'
-          AND EXTRACT(YEAR FROM DATE(la.start_date))  = %s
+          AND EXTRACT(YEAR FROM DATE(start_date))  = %s
         ORDER BY start_date
     """), (user_id, year)
     )
@@ -4926,7 +4926,14 @@ def preview_leave_report_department():
         if uid not in users:
             continue  # only users in this report
 
-        start = max(datetime.strptime(m["start_date"], "%Y-%m-%d").date(), first_day)
+        start_value = r["start_date"]
+
+        if isinstance(start_value, str):
+            start_value = datetime.strptime(start_value, "%Y-%m-%d").date()
+        elif isinstance(start_value, datetime):
+            start_value = start_value.date()
+
+        start = max(start_value, first_day)
         end   = min(datetime.strptime(m["end_date"], "%Y-%m-%d").date(), last_day)
 
         cur_day = start
