@@ -4418,8 +4418,8 @@ def view_individual_leave_report(user_id):
         if l["leave_type"] == "MC":
             continue
 
-        start = datetime.strptime(l["start_date"], "%Y-%m-%d").date()
-        end   = datetime.strptime(l["end_date"], "%Y-%m-%d").date()
+        start = normalize_date(l["start_date"])
+        end   = normalize_date(l["end_date"])
 
         d = start
         while d <= end:
