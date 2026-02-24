@@ -3370,6 +3370,7 @@ LEAVE_TYPE_MAP = {
     # ===== Medical =====
     "MC": "MC"
 }
+
 @app.route("/user/leave/<int:leave_id>")
 @login_required
 def user_leave_details(leave_id):
@@ -3377,21 +3378,34 @@ def user_leave_details(leave_id):
     c = conn.cursor()
 
     c.execute(
-        adapt_query("""SELECT l.*, u.full_name, u.position, u.email, u.phone, 
-               d.name AS department_name
-        FROM leave_applications l
-        JOIN users u ON u.id = l.user_id
-        LEFT JOIN departments d ON u.department_id = d.id
-        WHERE l.id=%s AND l.user_id=%s
-    """, (leave_id, session["user_id"]))
+        adapt_query("""
+            SELECT l.*, 
+                   u.full_name, 
+                   u.position, 
+                   u.email, 
+                   u.phone, 
+                   d.name AS department_name
+            FROM leave_applications l
+            JOIN users u ON u.id = l.user_id
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE l.id = %s 
+              AND l.user_id = %s
+        """),
+        (leave_id, session["user_id"])   
     )
 
     leave = c.fetchone()
     conn.close()
 
-    return render_template("user_leave_details.html", 
-                           datetime=datetime,
-                           leave=leave)
+    if not leave:
+        flash("Leave record not found.", "danger")
+        return redirect(url_for("user_dashboard"))
+
+    return render_template(
+        "user_leave_details.html",
+        datetime=datetime,
+        leave=leave
+    )
 
 
 @app.route("/user/upload_mc", methods=["POST"])
