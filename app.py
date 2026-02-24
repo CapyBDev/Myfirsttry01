@@ -4447,20 +4447,28 @@ def view_individual_leave_report(user_id):
     # ================= FORMAT APPROVED LEAVES =================
     formatted_approved = []
     for l in approved_leaves:
+
+        start = normalize_date(l["start_date"])
+        end   = normalize_date(l["end_date"])
+
         formatted_approved.append({
             "leave_type": l["leave_type"],
-            "start_date": l["start_date"],
-            "end_date": l["end_date"],
+            "start_date": start,
+            "end_date": end,
             "total_days": l["total_days"]
         })
 
     # ================= FORMAT MC (FOLLOW UPLOAD DATA) =================
     formatted_mc = []
     for mc in mc_records:
+
+        start = normalize_date(mc["start_date"])
+        end   = normalize_date(mc["end_date"])
+
         formatted_mc.append({
             "mc_number": mc["mc_number"],
-            "start_date": mc["start_date"],
-            "end_date": mc["end_date"]
+            "start_date": start,
+            "end_date": end
         })
 
     return render_template(
