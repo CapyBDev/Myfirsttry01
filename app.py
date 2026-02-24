@@ -134,6 +134,23 @@ def get_next_position(position):
 def allowed_photo(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def normalize_date(value):
+    from datetime import datetime, date
+
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        return datetime.strptime(value, "%Y-%m-%d").date()
+
+    if isinstance(value, datetime):
+        return value.date()
+
+    if isinstance(value, date):
+        return value
+
+    return value
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
@@ -845,8 +862,14 @@ def download_employee_leave_report(user_id):
         if l["leave_type"] == "MC":
             continue
 
-        start = datetime.strptime(l["start_date"], "%Y-%m-%d").date()
-        end   = datetime.strptime(l["end_date"], "%Y-%m-%d").date()
+        start = l["start_date"]
+        end   = l["end_date"]
+
+        if isinstance(start, datetime):
+            start = start.date()
+
+        if isinstance(end, datetime):
+            end = end.date()
 
         d = start
         while d <= end:
@@ -4885,8 +4908,11 @@ def preview_leave_report_department():
         if not code:
             continue
 
-        start = max(datetime.strptime(r["start_date"], "%Y-%m-%d").date(), first_day)
-        end   = min(datetime.strptime(r["end_date"], "%Y-%m-%d").date(), last_day)
+        start = normalize_date(r["start_date"])
+        end   = normalize_date(r["end_date"])
+
+        start = max(start, first_day)
+        end   = min(end, last_day)
 
         cur_day = start
         while cur_day <= end:
@@ -4924,17 +4950,13 @@ def preview_leave_report_department():
         uid = m["user_id"]
 
         if uid not in users:
-            continue  # only users in this report
+            continue
 
-        start_value = r["start_date"]
+        start = normalize_date(m["start_date"])
+        end   = normalize_date(m["end_date"])
 
-        if isinstance(start_value, str):
-            start_value = datetime.strptime(start_value, "%Y-%m-%d").date()
-        elif isinstance(start_value, datetime):
-            start_value = start_value.date()
-
-        start = max(start_value, first_day)
-        end   = min(datetime.strptime(m["end_date"], "%Y-%m-%d").date(), last_day)
+        start = max(start, first_day)
+        end   = min(end, last_day)
 
         cur_day = start
         while cur_day <= end:
@@ -4942,7 +4964,6 @@ def preview_leave_report_department():
                 day_no = cur_day.day
                 # MC overrides everything
                 users[uid]["daily"][day_no] = "MC"
-
             cur_day += timedelta(days=1)
 
     conn.close()
