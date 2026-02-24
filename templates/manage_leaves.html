@@ -423,14 +423,16 @@
             data-name="{{ l.full_name|lower }}"
             data-dept="{{ (l.department_name or '')|lower }}"
             data-status="{{ l.status }}"
-            data-year="{{ l.start_date[0:4] }}"
-            data-month="{{ l.start_date[5:7] }}"
+            data-year="{{ l.start_date.strftime('%Y') }}"
+            data-month="{{ l.start_date.strftime('%m') }}"
           >
             <td>{{ l.full_name }}</td>
             <td>{{ l.department_name or '-' }}</td>
             <td>{{ l.leave_type }}</td>
             <td>
-              <small>{{ l.start_date }} → {{ l.end_date }}</small>
+              <small>
+                {{ l.start_date.strftime('%d/%m/%Y') }}{{ l.end_date.strftime('%d/%m/%Y') }}
+              </small>
             </td>
             <td>
               <span class="badge
