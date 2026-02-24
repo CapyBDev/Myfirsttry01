@@ -1862,10 +1862,29 @@ def update_entitlement(user_id):
 
 @app.route("/manage_leaves")
 def manage_leaves():
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, date
 
     conn = get_db()
     cur = conn.cursor()
+
+    # =======================
+    # SAFE DATE NORMALIZER
+    # =======================
+    def normalize_date(value):
+        """Ensure value is always datetime.date"""
+        if value is None:
+            return None
+
+        if isinstance(value, str):
+            return datetime.strptime(value, "%Y-%m-%d").date()
+
+        if isinstance(value, datetime):
+            return value.date()
+
+        if isinstance(value, date):
+            return value
+
+        return value
 
     current_year = datetime.now().year
     start_year = current_year - 5
@@ -1877,11 +1896,10 @@ def manage_leaves():
     report_year = request.args.get("year", str(current_year))
     selected_department = request.args.get("department", "all")
     action = request.args.get("action")
-
     should_build_report = action == "filter"
 
     # =======================
-    # MONTHLY MATRIX FILTERS
+    # MATRIX FILTERS
     # =======================
     selected_month = request.args.get("matrix_month", datetime.now().strftime("%m"))
     matrix_year = request.args.get("matrix_year", str(current_year))
@@ -1890,12 +1908,11 @@ def manage_leaves():
     # =======================
     # DEPARTMENTS
     # =======================
-    cur.execute(
-        adapt_query("SELECT id, name FROM departments ORDER BY name"))
+    cur.execute(adapt_query("SELECT id, name FROM departments ORDER BY name"))
     departments = cur.fetchall()
 
     # =======================
-    # LEAVE REPORT
+    # LEAVE REPORT SECTION
     # =======================
     leave_report = []
 
@@ -1914,20 +1931,22 @@ def manage_leaves():
             params.append(selected_department)
 
         cur.execute(
-            adapt_query(f"""SELECT u.id AS user_id,
-                u.full_name,
-                la.leave_type,
-                la.start_date,
-                la.end_date,
-                u.entitlement
-            FROM leave_applications la
-            JOIN users u ON u.id = la.user_id
-            LEFT JOIN departments d ON u.department_id = d.id
-            WHERE la.status = 'Approved'
-            AND EXTRACT(YEAR FROM DATE(la.start_date)) = %s
-            {dept_filter}
-            ORDER BY u.full_name, la.start_date
-        """), params
+            adapt_query(f"""
+                SELECT u.id AS user_id,
+                       u.full_name,
+                       la.leave_type,
+                       la.start_date,
+                       la.end_date,
+                       u.entitlement
+                FROM leave_applications la
+                JOIN users u ON u.id = la.user_id
+                LEFT JOIN departments d ON u.department_id = d.id
+                WHERE la.status = 'Approved'
+                AND EXTRACT(YEAR FROM DATE(la.start_date)) = %s
+                {dept_filter}
+                ORDER BY u.full_name, la.start_date
+            """),
+            params
         )
 
         rows = cur.fetchall()
@@ -1936,7 +1955,6 @@ def manage_leaves():
         for r in rows:
             uid = r["user_id"]
 
-            # ===== INIT USER (FIXED ENTITLEMENT) =====
             if uid not in users:
                 users[uid] = {
                     "user_id": uid,
@@ -1951,64 +1969,62 @@ def manage_leaves():
             if r["leave_type"] == "MC":
                 continue
 
-            # ===== CALCULATE WORKING DAYS =====
-            days = calculate_working_days(r["start_date"], r["end_date"])
+            start = normalize_date(r["start_date"])
+            end   = normalize_date(r["end_date"])
 
-            if isinstance(r["start_date"], str):
-                    start = datetime.strptime(r["start_date"], "%Y-%m-%d")
-            else:
-                start = r["start_date"]
+            days = calculate_working_days(start, end)
 
             m = MONTH_MAP[start.strftime("%m")]
 
-            # ===== ACCUMULATE USED =====
             users[uid]["monthly"][m] += days
             users[uid]["total_used"] += days
 
-            # ===== MONTHLY DETAILS =====
             users[uid]["monthly_details"].setdefault(m, {})
             users[uid]["monthly_details"][m].setdefault(r["leave_type"], [])
             users[uid]["monthly_details"][m][r["leave_type"]].append({
-                "start": r["start_date"],
-                "end": r["end_date"],
+                "start": start,
+                "end": end,
                 "days": days
             })
 
-            # ===== LEAVE TYPE DETAILS =====
             users[uid]["leave_type_details"].setdefault(r["leave_type"], [])
             users[uid]["leave_type_details"][r["leave_type"]].append({
-                "start": r["start_date"],
-                "end": r["end_date"],
+                "start": start,
+                "end": end,
                 "days": days
             })
 
-        # ===== FINAL BALANCE CALCULATION (SAFE) =====
         for u in users.values():
             u["remaining"] = max(0, u["entitlement"] - u["total_used"])
 
         leave_report = list(users.values())
 
     # =========================================================
-    # MONTHLY LEAVE MATRIX (FIXED WITH MC)
+    # MONTHLY LEAVE MATRIX
     # =========================================================
+
     monthly_matrix = []
 
     first_day = datetime.strptime(
         f"{matrix_year}-{selected_month}-01", "%Y-%m-%d"
-    )
+    ).date()
 
     if selected_month == "12":
-        last_day = datetime.strptime(
-            f"{int(matrix_year)+1}-01-01", "%Y-%m-%d"
-        ) - timedelta(days=1)
+        last_day = (
+            datetime.strptime(f"{int(matrix_year)+1}-01-01", "%Y-%m-%d").date()
+            - timedelta(days=1)
+        )
     else:
-        last_day = datetime.strptime(
-            f"{matrix_year}-{int(selected_month)+1:02d}-01", "%Y-%m-%d"
-        ) - timedelta(days=1)
+        last_day = (
+            datetime.strptime(
+                f"{matrix_year}-{int(selected_month)+1:02d}-01",
+                "%Y-%m-%d"
+            ).date()
+            - timedelta(days=1)
+        )
 
     users = {}
-
-    params = [last_day.strftime("%Y-%m-%d"), first_day.strftime("%Y-%m-%d")]
+    params = [last_day, first_day]
     dept_filter = ""
 
     if selected_dept != "all":
@@ -2017,21 +2033,22 @@ def manage_leaves():
 
     # ===== APPROVED LEAVES =====
     cur.execute(
-        adapt_query(f"""SELECT
-            la.user_id,
-            u.full_name,
-            la.leave_type,
-            la.start_date,
-            la.end_date
-        FROM leave_applications la
-        JOIN users u ON u.id = la.user_id
-        LEFT JOIN departments d ON u.department_id = d.id
-        WHERE la.status='Approved'
-        AND DATE(la.start_date) <= %s
-        AND DATE(la.end_date) >= %s
-        {dept_filter}
-        ORDER BY u.full_name
-    """), params
+        adapt_query(f"""
+            SELECT la.user_id,
+                   u.full_name,
+                   la.leave_type,
+                   la.start_date,
+                   la.end_date
+            FROM leave_applications la
+            JOIN users u ON u.id = la.user_id
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE la.status='Approved'
+            AND DATE(la.start_date) <= %s
+            AND DATE(la.end_date) >= %s
+            {dept_filter}
+            ORDER BY u.full_name
+        """),
+        params
     )
 
     rows = cur.fetchall()
@@ -2043,43 +2060,30 @@ def manage_leaves():
             "leaves": {}
         })
 
-        if isinstance(r["start_date"], str):
-            start = datetime.strptime(r["start_date"], "%Y-%m-%d")
-        else:
-            start = r["start_date"]
-
-        if isinstance(r["end_date"], str):
-            end = datetime.strptime(r["end_date"], "%Y-%m-%d")
-        else:
-            end = r["end_date"]
+        start = normalize_date(r["start_date"])
+        end   = normalize_date(r["end_date"])
 
         cur_day = max(start, first_day)
+
         while cur_day <= min(end, last_day):
             users[uid]["leaves"][cur_day.strftime("%d")] = r["leave_type"]
             cur_day += timedelta(days=1)
 
-
-    # ===== MC RECORDS (FIXED) =====
-    params = [last_day.strftime("%Y-%m-%d"), first_day.strftime("%Y-%m-%d")]
-    dept_filter = ""
-
-    if selected_dept != "all":
-        dept_filter = "AND d.name = %s"
-        params.append(selected_dept)
-
+    # ===== MC RECORDS =====
     cur.execute(
-        adapt_query(f"""SELECT
-            m.user_id,
-            u.full_name,
-            m.start_date,
-            m.end_date
-        FROM mc_records m
-        JOIN users u ON u.id = m.user_id
-        LEFT JOIN departments d ON u.department_id = d.id
-        WHERE DATE(m.start_date) <= %s
-        AND DATE(m.end_date) >= %s
-        {dept_filter}
-    """), params
+        adapt_query(f"""
+            SELECT m.user_id,
+                   u.full_name,
+                   m.start_date,
+                   m.end_date
+            FROM mc_records m
+            JOIN users u ON u.id = m.user_id
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE DATE(m.start_date) <= %s
+            AND DATE(m.end_date) >= %s
+            {dept_filter}
+        """),
+        params
     )
 
     mc_rows = cur.fetchall()
@@ -2091,34 +2095,39 @@ def manage_leaves():
             "leaves": {}
         })
 
-        start = datetime.strptime(m["start_date"], "%Y-%m-%d")
-        end   = datetime.strptime(m["end_date"], "%Y-%m-%d")
+        start = normalize_date(m["start_date"])
+        end   = normalize_date(m["end_date"])
 
         cur_day = max(start, first_day)
+
         while cur_day <= min(end, last_day):
             users[uid]["leaves"][cur_day.strftime("%d")] = "MC"
             cur_day += timedelta(days=1)
 
     monthly_matrix = list(users.values())
 
-
     # =======================
     # COMPLETED LIST
     # =======================
     cur.execute(
         adapt_query("""
-        SELECT la.id, la.full_name,
-               COALESCE(d.name,'') AS department_name,
-               la.leave_type, la.start_date, la.end_date,
-               la.status, la.approver_name
-        FROM leave_applications la
-        LEFT JOIN users u ON u.id=la.user_id
-        LEFT JOIN departments d ON u.department_id=d.id
-        WHERE la.status IN ('Approved','Rejected')
-        ORDER BY la.start_date DESC
-    """))
-    completed = cur.fetchall()
+            SELECT la.id,
+                   la.full_name,
+                   COALESCE(d.name,'') AS department_name,
+                   la.leave_type,
+                   la.start_date,
+                   la.end_date,
+                   la.status,
+                   la.approver_name
+            FROM leave_applications la
+            LEFT JOIN users u ON u.id=la.user_id
+            LEFT JOIN departments d ON u.department_id=d.id
+            WHERE la.status IN ('Approved','Rejected')
+            ORDER BY la.start_date DESC
+        """)
+    )
 
+    completed = cur.fetchall()
     conn.close()
 
     return render_template(
@@ -2126,16 +2135,291 @@ def manage_leaves():
         leave_report=leave_report,
         selected_year=report_year,
         selected_department=selected_department,
-
         monthly_matrix=monthly_matrix,
         selected_month=selected_month,
         selected_year_matrix=matrix_year,
         selected_dept=selected_dept,
-
         completed=completed,
         departments=departments,
         year_range=year_range
     )
+
+# @app.route("/manage_leaves")
+# def manage_leaves():
+#     from datetime import datetime, timedelta
+
+#     conn = get_db()
+#     cur = conn.cursor()
+
+#     current_year = datetime.now().year
+#     start_year = current_year - 5
+#     year_range = list(range(start_year, current_year + 1))
+
+#     # =======================
+#     # LEAVE REPORT FILTERS
+#     # =======================
+#     report_year = request.args.get("year", str(current_year))
+#     selected_department = request.args.get("department", "all")
+#     action = request.args.get("action")
+
+#     should_build_report = action == "filter"
+
+#     # =======================
+#     # MONTHLY MATRIX FILTERS
+#     # =======================
+#     selected_month = request.args.get("matrix_month", datetime.now().strftime("%m"))
+#     matrix_year = request.args.get("matrix_year", str(current_year))
+#     selected_dept = request.args.get("matrix_department", "all")
+
+#     # =======================
+#     # DEPARTMENTS
+#     # =======================
+#     cur.execute(
+#         adapt_query("SELECT id, name FROM departments ORDER BY name"))
+#     departments = cur.fetchall()
+
+#     # =======================
+#     # LEAVE REPORT
+#     # =======================
+#     leave_report = []
+
+#     MONTH_MAP = {
+#         "01":"JAN","02":"FEB","03":"MAR","04":"APR",
+#         "05":"MAY","06":"JUN","07":"JUL","08":"AUG",
+#         "09":"SEP","10":"OCT","11":"NOV","12":"DEC"
+#     }
+
+#     if should_build_report:
+#         params = [report_year]
+#         dept_filter = ""
+
+#         if selected_department != "all":
+#             dept_filter = "AND d.name = %s"
+#             params.append(selected_department)
+
+#         cur.execute(
+#             adapt_query(f"""SELECT u.id AS user_id,
+#                 u.full_name,
+#                 la.leave_type,
+#                 la.start_date,
+#                 la.end_date,
+#                 u.entitlement
+#             FROM leave_applications la
+#             JOIN users u ON u.id = la.user_id
+#             LEFT JOIN departments d ON u.department_id = d.id
+#             WHERE la.status = 'Approved'
+#             AND EXTRACT(YEAR FROM DATE(la.start_date)) = %s
+#             {dept_filter}
+#             ORDER BY u.full_name, la.start_date
+#         """), params
+#         )
+
+#         rows = cur.fetchall()
+#         users = {}
+
+#         for r in rows:
+#             uid = r["user_id"]
+
+#             # ===== INIT USER (FIXED ENTITLEMENT) =====
+#             if uid not in users:
+#                 users[uid] = {
+#                     "user_id": uid,
+#                     "name": r["full_name"],
+#                     "entitlement": r["entitlement"] or 0,
+#                     "total_used": 0,
+#                     "monthly": {m: 0 for m in MONTH_MAP.values()},
+#                     "monthly_details": {},
+#                     "leave_type_details": {}
+#                 }
+
+#             if r["leave_type"] == "MC":
+#                 continue
+
+#             # ===== CALCULATE WORKING DAYS =====
+#             days = calculate_working_days(r["start_date"], r["end_date"])
+
+#             if isinstance(r["start_date"], str):
+#                 start = datetime.strptime(r["start_date"], "%Y-%m-%d")
+#             else:
+#                 start = r["start_date"]
+
+#             m = MONTH_MAP[start.strftime("%m")]
+
+#             # ===== ACCUMULATE USED =====
+#             users[uid]["monthly"][m] += days
+#             users[uid]["total_used"] += days
+
+#             # ===== MONTHLY DETAILS =====
+#             users[uid]["monthly_details"].setdefault(m, {})
+#             users[uid]["monthly_details"][m].setdefault(r["leave_type"], [])
+#             users[uid]["monthly_details"][m][r["leave_type"]].append({
+#                 "start": r["start_date"],
+#                 "end": r["end_date"],
+#                 "days": days
+#             })
+
+#             # ===== LEAVE TYPE DETAILS =====
+#             users[uid]["leave_type_details"].setdefault(r["leave_type"], [])
+#             users[uid]["leave_type_details"][r["leave_type"]].append({
+#                 "start": r["start_date"],
+#                 "end": r["end_date"],
+#                 "days": days
+#             })
+
+#         # ===== FINAL BALANCE CALCULATION (SAFE) =====
+#         for u in users.values():
+#             u["remaining"] = max(0, u["entitlement"] - u["total_used"])
+
+#         leave_report = list(users.values())
+
+#     # =========================================================
+#     # MONTHLY LEAVE MATRIX (FIXED WITH MC)
+#     # =========================================================
+#     monthly_matrix = []
+
+#     first_day = datetime.strptime(
+#         f"{matrix_year}-{selected_month}-01", "%Y-%m-%d"
+#     )
+
+#     if selected_month == "12":
+#         last_day = datetime.strptime(
+#             f"{int(matrix_year)+1}-01-01", "%Y-%m-%d"
+#         ) - timedelta(days=1)
+#     else:
+#         last_day = datetime.strptime(
+#             f"{matrix_year}-{int(selected_month)+1:02d}-01", "%Y-%m-%d"
+#         ) - timedelta(days=1)
+
+#     users = {}
+
+#     params = [last_day.strftime("%Y-%m-%d"), first_day.strftime("%Y-%m-%d")]
+#     dept_filter = ""
+
+#     if selected_dept != "all":
+#         dept_filter = "AND d.name = %s"
+#         params.append(selected_dept)
+
+#     # ===== APPROVED LEAVES =====
+#     cur.execute(
+#         adapt_query(f"""SELECT
+#             la.user_id,
+#             u.full_name,
+#             la.leave_type,
+#             la.start_date,
+#             la.end_date
+#         FROM leave_applications la
+#         JOIN users u ON u.id = la.user_id
+#         LEFT JOIN departments d ON u.department_id = d.id
+#         WHERE la.status='Approved'
+#         AND DATE(la.start_date) <= %s
+#         AND DATE(la.end_date) >= %s
+#         {dept_filter}
+#         ORDER BY u.full_name
+#     """), params
+#     )
+
+#     rows = cur.fetchall()
+
+#     for r in rows:
+#         uid = r["user_id"]
+#         users.setdefault(uid, {
+#             "user_name": r["full_name"],
+#             "leaves": {}
+#         })
+
+#         if isinstance(r["start_date"], str):
+#             start = datetime.strptime(r["start_date"], "%Y-%m-%d")
+#         else:
+#             start = r["start_date"]
+
+#         if isinstance(r["end_date"], str):
+#             end = datetime.strptime(r["end_date"], "%Y-%m-%d")
+#         else:
+#             end = r["end_date"]
+
+#         cur_day = max(start, first_day)
+#         while cur_day <= min(end, last_day):
+#             users[uid]["leaves"][cur_day.strftime("%d")] = r["leave_type"]
+#             cur_day += timedelta(days=1)
+
+
+#     # ===== MC RECORDS (FIXED) =====
+#     params = [last_day.strftime("%Y-%m-%d"), first_day.strftime("%Y-%m-%d")]
+#     dept_filter = ""
+
+#     if selected_dept != "all":
+#         dept_filter = "AND d.name = %s"
+#         params.append(selected_dept)
+
+#     cur.execute(
+#         adapt_query(f"""SELECT
+#             m.user_id,
+#             u.full_name,
+#             m.start_date,
+#             m.end_date
+#         FROM mc_records m
+#         JOIN users u ON u.id = m.user_id
+#         LEFT JOIN departments d ON u.department_id = d.id
+#         WHERE DATE(m.start_date) <= %s
+#         AND DATE(m.end_date) >= %s
+#         {dept_filter}
+#     """), params
+#     )
+
+#     mc_rows = cur.fetchall()
+
+#     for m in mc_rows:
+#         uid = m["user_id"]
+#         users.setdefault(uid, {
+#             "user_name": m["full_name"],
+#             "leaves": {}
+#         })
+
+#         start = datetime.strptime(m["start_date"], "%Y-%m-%d")
+#         end   = datetime.strptime(m["end_date"], "%Y-%m-%d")
+
+#         cur_day = max(start, first_day)
+#         while cur_day <= min(end, last_day):
+#             users[uid]["leaves"][cur_day.strftime("%d")] = "MC"
+#             cur_day += timedelta(days=1)
+
+#     monthly_matrix = list(users.values())
+
+
+#     # =======================
+#     # COMPLETED LIST
+#     # =======================
+#     cur.execute(
+#         adapt_query("""
+#         SELECT la.id, la.full_name,
+#                COALESCE(d.name,'') AS department_name,
+#                la.leave_type, la.start_date, la.end_date,
+#                la.status, la.approver_name
+#         FROM leave_applications la
+#         LEFT JOIN users u ON u.id=la.user_id
+#         LEFT JOIN departments d ON u.department_id=d.id
+#         WHERE la.status IN ('Approved','Rejected')
+#         ORDER BY la.start_date DESC
+#     """))
+#     completed = cur.fetchall()
+
+#     conn.close()
+
+#     return render_template(
+#         "manage_leaves.html",
+#         leave_report=leave_report,
+#         selected_year=report_year,
+#         selected_department=selected_department,
+
+#         monthly_matrix=monthly_matrix,
+#         selected_month=selected_month,
+#         selected_year_matrix=matrix_year,
+#         selected_dept=selected_dept,
+
+#         completed=completed,
+#         departments=departments,
+#         year_range=year_range
+#     )
 
 
 MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"]

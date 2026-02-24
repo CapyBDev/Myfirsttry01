@@ -188,7 +188,7 @@
         <td>
           {% set sd = l.start_date %}
           {% set ed = l.end_date %}
-          {{ sd[8:10] }}/{{ sd[5:7] }}/{{ sd[2:4] }}-{{ ed[8:10] }}/{{ ed[5:7] }}/{{ ed[2:4] }}
+          {{ sd.strftime('%d/%m/%y') }} - {{ ed.strftime('%d/%m/%y') }}
         </td>
 
         <!-- 🔹 Collapsible reason -->
