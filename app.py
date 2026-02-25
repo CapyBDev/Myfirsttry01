@@ -5460,8 +5460,11 @@ def print_monthly_matrix_pdf():
         uid = m["user_id"]
         users.setdefault(uid, {"user_name": m["full_name"], "leaves": {}})
 
-        start = datetime.strptime(m["start_date"], "%Y-%m-%d")
-        end   = datetime.strptime(m["end_date"], "%Y-%m-%d")
+        start = normalize_date(m["start_date"])
+        end   = normalize_date(m["end_date"])
+
+        start = max(start, first_day)
+        end   = min(end, last_day)
 
         cur_day = max(start, first_day)
         while cur_day <= min(end, last_day):
