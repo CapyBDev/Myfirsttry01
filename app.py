@@ -3119,8 +3119,7 @@ def ceo_dashboard():
 
     # ================== BAR GRAPH (Approved + Rejected per Month) ==================
     cur.execute(
-        adapt_query("""
-            SELECT 
+        adapt_query("""SELECT 
                 EXTRACT(YEAR FROM l.approved_at)::int AS year,
                 EXTRACT(MONTH FROM l.approved_at)::int AS month,
                 COALESCE(d.name,'Unknown') AS department,
