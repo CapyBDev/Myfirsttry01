@@ -82,13 +82,19 @@
           <!-- Leave Applied From -->
           <div class="col-md-6">
             <label class="form-label">Leave Applied From</label>
-            <input type="date" class="form-control" name="start_date" required>
+            <input type="date" class="form-control"
+                  name="start_date"
+                  id="start_date"
+                  required>
           </div>
 
           <!-- Leave Applied To -->
           <div class="col-md-6">
             <label class="form-label">Leave Applied To</label>
-            <input type="date" class="form-control" name="end_date" required>
+            <input type="date" class="form-control"
+                  name="end_date"
+                  id="end_date"
+                  required>
           </div>
 
           <!-- Leave Categories -->
@@ -195,6 +201,31 @@
 </div>
 
 <script>
+// ================= DATE CONTROL =================
+document.addEventListener("DOMContentLoaded", function(){
+
+  const startDate = document.getElementById("start_date");
+  const endDate   = document.getElementById("end_date");
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // Prevent selecting past dates
+  startDate.min = today;
+  endDate.min = today;
+
+  startDate.addEventListener("change", function(){
+
+    // Set minimum end date equal to selected start date
+    endDate.min = this.value;
+
+    // If already selected earlier end date → reset it
+    if(endDate.value && endDate.value < this.value){
+      endDate.value = this.value;
+    }
+  });
+
+});
+
 let toastTimer;
 
 function showInfo(msg){
@@ -213,6 +244,8 @@ document.querySelector("form").addEventListener("submit", function(e){
 
   const reason = document.getElementById("reason").value.trim();
   const address = document.getElementById("contact_address").value.trim();
+  const start = document.getElementById("start_date").value;
+  const end   = document.getElementById("end_date").value;
   const phone = document.getElementById("contact_phone").value.trim();
 
   if(reason === ""){
@@ -224,6 +257,18 @@ document.querySelector("form").addEventListener("submit", function(e){
   if(address === ""){
     e.preventDefault();
     showInfo("Write your contact address during leave");
+    return;
+  }
+  
+  if(start === "" || end === ""){
+    e.preventDefault();
+    showInfo("Please select leave dates");
+    return;
+  }
+
+  if(end < start){
+    e.preventDefault();
+    showInfo("End date cannot be earlier than start date");
     return;
   }
 

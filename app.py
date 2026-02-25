@@ -3541,7 +3541,7 @@ def apply_leave():
     approver_name = normalize(approver_name)
 
     if request.method == "POST":
-
+    
         leave_type = request.form.get("leave_type")
         start_date = request.form.get("start_date")
         end_date = request.form.get("end_date")
@@ -3549,6 +3549,16 @@ def apply_leave():
         contact_address = request.form.get("contact_address")
         contact_phone = request.form.get("contact_phone")
 
+        # ================= DATE VALIDATION =================
+        if not start_date or not end_date:
+            flash("Please select leave dates.", "danger")
+            return redirect(url_for("apply_leave"))
+
+        if end_date < start_date:
+            flash("End date cannot be earlier than start date.", "danger")
+            return redirect(url_for("apply_leave"))
+
+        # ================= CALCULATE WORKING DAYS =================
         total_days = calculate_working_days(start_date, end_date)
 
         support_doc = None
