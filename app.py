@@ -3061,7 +3061,6 @@ def delete_department(dept_id):
     conn.close()
     flash("Department deleted successfully.", "info")
 
-    # ✅ Stay on Manage Users dashboard
     return redirect(url_for("manage_users"))
 
 @app.route("/ceo/dashboard")
@@ -3120,9 +3119,10 @@ def ceo_dashboard():
 
     # ================== BAR GRAPH (Approved + Rejected per Month) ==================
     cur.execute(
-        adapt_query("""SELECT 
-            EXTRACT(YEAR FROM l.approved_at::date) AS year,
-            EXTRACT(MONTH FROM l.approved_at::date) AS month,
+    adapt_query("""
+        SELECT 
+            EXTRACT(YEAR FROM l.approved_at)::int AS year,
+            EXTRACT(MONTH FROM l.approved_at)::int AS month,
             COALESCE(d.name,'Unknown') AS department,
             l.leave_type,
             SUM(CASE WHEN l.status='Approved' THEN 1 ELSE 0 END) AS approved,
@@ -3131,12 +3131,17 @@ def ceo_dashboard():
         JOIN users u ON u.id = l.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.status IN ('Approved','Rejected')
+          AND UPPER(TRIM(l.approver_name)) = 'CEO'
+          AND l.approved_at IS NOT NULL
         GROUP BY year, month, department, l.leave_type
         ORDER BY year, month
-    """))
-    stats = [dict(row) for row in cur.fetchall()]
+    """)
+    )
 
-    years = sorted({row["year"] for row in stats})
+    stats = cur.fetchall()
+    stats = [dict(row) for row in stats]
+
+    years = sorted({int(row["year"]) for row in stats})
 
     # ================== TREND RAW DATA (for filters) ==================
     cur.execute(
