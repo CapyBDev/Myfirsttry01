@@ -3119,23 +3119,22 @@ def ceo_dashboard():
 
     # ================== BAR GRAPH (Approved + Rejected per Month) ==================
     cur.execute(
-    adapt_query("""
-        SELECT 
-            EXTRACT(YEAR FROM l.approved_at)::int AS year,
-            EXTRACT(MONTH FROM l.approved_at)::int AS month,
-            COALESCE(d.name,'Unknown') AS department,
-            l.leave_type,
-            SUM(CASE WHEN l.status='Approved' THEN 1 ELSE 0 END) AS approved,
-            SUM(CASE WHEN l.status='Rejected' THEN 1 ELSE 0 END) AS rejected
-        FROM leave_applications l
-        JOIN users u ON u.id = l.user_id
-        LEFT JOIN departments d ON u.department_id = d.id
-        WHERE l.status IN ('Approved','Rejected')
-          AND UPPER(TRIM(l.approver_name)) = 'CEO'
-          AND l.approved_at IS NOT NULL
-        GROUP BY year, month, department, l.leave_type
-        ORDER BY year, month
-    """)
+        adapt_query("""SELECT 
+                EXTRACT(YEAR FROM l.approved_at)::int AS year,
+                EXTRACT(MONTH FROM l.approved_at)::int AS month,
+                COALESCE(d.name,'Unknown') AS department,
+                l.leave_type,
+                SUM(CASE WHEN l.status='Approved' THEN 1 ELSE 0 END) AS approved,
+                SUM(CASE WHEN l.status='Rejected' THEN 1 ELSE 0 END) AS rejected
+            FROM leave_applications l
+            JOIN users u ON u.id = l.user_id
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE l.status IN ('Approved','Rejected')
+            AND UPPER(TRIM(l.approver_name)) = 'CEO'
+            AND l.approved_at IS NOT NULL
+            GROUP BY year, month, department, l.leave_type
+            ORDER BY year, month
+        """)
     )
 
     stats = cur.fetchall()
