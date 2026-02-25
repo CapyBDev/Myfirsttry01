@@ -3120,45 +3120,22 @@ def ceo_dashboard():
     # ================== BAR GRAPH (Approved + Rejected per Month) ==================
     cur.execute(
         adapt_query("""SELECT 
-                EXTRACT(YEAR FROM l.approved_at)::int AS year,
-                EXTRACT(MONTH FROM l.approved_at)::int AS month,
-                COALESCE(d.name,'Unknown') AS department,
-                l.leave_type,
-                SUM(CASE WHEN l.status='Approved' THEN 1 ELSE 0 END) AS approved,
-                SUM(CASE WHEN l.status='Rejected' THEN 1 ELSE 0 END) AS rejected
-            FROM leave_applications l
-            JOIN users u ON u.id = l.user_id
-            LEFT JOIN departments d ON u.department_id = d.id
-            WHERE l.status IN ('Approved','Rejected')
-            AND UPPER(TRIM(l.approver_name)) = 'CEO'
-            AND l.approved_at IS NOT NULL
-            GROUP BY year, month, department, l.leave_type
-            ORDER BY year, month
-        """)
-    )
+            EXTRACT(YEAR FROM l.approved_at::date) AS year,
+            EXTRACT(MONTH FROM l.approved_at::date) AS month,
+            COALESCE(d.name,'Unknown') AS department,
+            l.leave_type,
+            SUM(CASE WHEN l.status='Approved' THEN 1 ELSE 0 END) AS approved,
+            SUM(CASE WHEN l.status='Rejected' THEN 1 ELSE 0 END) AS rejected
+        FROM leave_applications l
+        JOIN users u ON u.id = l.user_id
+        LEFT JOIN departments d ON u.department_id = d.id
+        WHERE l.status IN ('Approved','Rejected')
+        GROUP BY year, month, department, l.leave_type
+        ORDER BY year, month
+    """))
+    stats = [dict(row) for row in cur.fetchall()]
 
-    stats = cur.fetchall()
-    stats = [dict(row) for row in stats]
-
-    years = sorted({int(row["year"]) for row in stats})
-    # cur.execute(
-    #     adapt_query("""SELECT 
-    #         EXTRACT(YEAR FROM l.approved_at::date) AS year,
-    #         EXTRACT(MONTH FROM l.approved_at::date) AS month,
-    #         COALESCE(d.name,'Unknown') AS department,
-    #         l.leave_type,
-    #         SUM(CASE WHEN l.status='Approved' THEN 1 ELSE 0 END) AS approved,
-    #         SUM(CASE WHEN l.status='Rejected' THEN 1 ELSE 0 END) AS rejected
-    #     FROM leave_applications l
-    #     JOIN users u ON u.id = l.user_id
-    #     LEFT JOIN departments d ON u.department_id = d.id
-    #     WHERE l.status IN ('Approved','Rejected')
-    #     GROUP BY year, month, department, l.leave_type
-    #     ORDER BY year, month
-    # """))
-    # stats = [dict(row) for row in cur.fetchall()]
-
-    # years = sorted({row["year"] for row in stats})
+    years = sorted({row["year"] for row in stats})
 
     # ================== TREND RAW DATA (for filters) ==================
     cur.execute(
