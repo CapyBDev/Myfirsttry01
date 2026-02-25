@@ -35,7 +35,7 @@ else:
     app.secret_key = os.environ.get("SECRET_KEY")
 
 
-# === Upload config untuk dokumen sokongan leave ===
+#leave upload
 LEAVE_UPLOAD_FOLDER = os.path.join("static", "uploads", "leave_docs")
 os.makedirs(LEAVE_UPLOAD_FOLDER, exist_ok=True)
 
@@ -4810,8 +4810,10 @@ def get_leave_report_data(year, month, department):
         if not code:
             continue
 
-        start = max(datetime.strptime(r["start_date"], "%Y-%m-%d").date(), first_day)
-        end   = min(datetime.strptime(r["end_date"], "%Y-%m-%d").date(), last_day)
+        start_date = normalize_date(r["start_date"])
+        start = max(start_date, first_day)
+        end_date = normalize_date(r["end_date"])
+        end = min(end_date, last_day)
 
         cur_day = start
         while cur_day <= end:
@@ -4845,8 +4847,11 @@ def get_leave_report_data(year, month, department):
         if uid not in users:
             continue
 
-        start = max(datetime.strptime(m["start_date"], "%Y-%m-%d").date(), first_day)
-        end   = min(datetime.strptime(m["end_date"], "%Y-%m-%d").date(), last_day)
+        start = normalize_date(m["start_date"])
+        end   = normalize_date(m["end_date"])
+
+        start = max(start, first_day)
+        end   = min(end, last_day)
 
         cur_day = start
         while cur_day <= end:
@@ -5066,8 +5071,11 @@ def team_leave_pdf():
         if not code:
             continue
 
-        start = max(datetime.strptime(r["start_date"], "%Y-%m-%d").date(), first_day)
-        end = min(datetime.strptime(r["end_date"], "%Y-%m-%d").date(), last_day)
+        start_date = normalize_date(r["start_date"])
+        start = max(start_date, first_day)
+        end_date = normalize_date(r["end_date"])
+        end = min(end_date, last_day)
+        # end = min(datetime.strptime(r["end_date"], "%Y-%m-%d").date(), last_day)
 
         cur_day = start
         while cur_day <= end:
@@ -5093,8 +5101,11 @@ def team_leave_pdf():
         uid = m["user_id"]
         if uid not in users:
             continue
-        start = max(datetime.strptime(m["start_date"], "%Y-%m-%d").date(), first_day)
-        end = min(datetime.strptime(m["end_date"], "%Y-%m-%d").date(), last_day)
+        start = normalize_date(m["start_date"])
+        end   = normalize_date(m["end_date"])
+
+        start = max(start, first_day)
+        end   = min(end, last_day)
 
         d = start
         while d <= end:
