@@ -298,14 +298,15 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-const rawData = {{ stats|tojson }};
-const rawTrendData = {{ trend_raw|tojson }};
-const leaveTypes = {{ leave_types|tojson }};
-const leaveCounts = {{ leave_type_count|tojson }};
-const labels = {{ labels|tojson }};
-const approvedData = {{ approved_data|tojson }};
-const rejectedData = {{ rejected_data|tojson }};
-const totalData = {{ total_data|tojson }};
+const labels = {{ labels|default([])|tojson }};
+const approvedData = {{ approved_data|default([])|tojson }};
+const rejectedData = {{ rejected_data|default([])|tojson }};
+const totalData = {{ total_data|default([])|tojson }};
+
+const rawData = {{ stats|default([])|tojson }};
+const rawTrendData = {{ trend_raw|default([])|tojson }};
+const leaveTypes = {{ leave_types|default([])|tojson }};
+const leaveCounts = {{ leave_type_count|default([])|tojson }};
 
 // Month labels fixed JAN–DEC
 const monthOrder = ["01","02","03","04","05","06","07","08","09","10","11","12"];

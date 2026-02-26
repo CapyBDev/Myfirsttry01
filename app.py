@@ -3192,6 +3192,7 @@ def ceo_dashboard():
         approved_count=approved_count,
         rejected_count=rejected_count,
         stats=stats,
+        # years=years,
         approved_data=approved_data,
         rejected_data=rejected_data,
         total_data=total_data,
