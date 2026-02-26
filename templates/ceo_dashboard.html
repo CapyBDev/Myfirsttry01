@@ -356,24 +356,35 @@ let mainChart = new Chart(mainCtx,{
 });
 
 function updateMainGraph(){
- const year = document.getElementById("yearSelect").value;
- const filtered = rawData.filter(r=>r.year==year);
 
- const labels = monthOrder.map(m=>monthMap[m]);
+ const yearSelect = document.getElementById("yearSelect");
+ if(!yearSelect) return;
+
+ const year = yearSelect.value;
+
+ // Convert month to 2-digit string for comparison
+ const filtered = rawData
+   .filter(r => String(r.year) === String(year))
+   .map(r => ({
+       ...r,
+       monthStr: String(r.month).padStart(2,"0")
+   }));
+
+ const labels = monthOrder.map(m => monthMap[m]);
 
  const totalData = monthOrder.map(m=>{
-   const rows = filtered.filter(r=>r.month===m);
-   return rows.reduce((s,r)=>s+r.approved+r.rejected,0);
+   const rows = filtered.filter(r=>r.monthStr === m);
+   return rows.reduce((s,r)=>s + Number(r.approved) + Number(r.rejected),0);
  });
 
  const approvedData = monthOrder.map(m=>{
-   const rows = filtered.filter(r=>r.month===m);
-   return rows.reduce((s,r)=>s+r.approved,0);
+   const rows = filtered.filter(r=>r.monthStr === m);
+   return rows.reduce((s,r)=>s + Number(r.approved),0);
  });
 
  const rejectedData = monthOrder.map(m=>{
-   const rows = filtered.filter(r=>r.month===m);
-   return rows.reduce((s,r)=>s+r.rejected,0);
+   const rows = filtered.filter(r=>r.monthStr === m);
+   return rows.reduce((s,r)=>s + Number(r.rejected),0);
  });
 
  mainChart.data.labels = labels;

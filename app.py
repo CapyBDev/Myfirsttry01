@@ -3116,25 +3116,37 @@ def ceo_dashboard():
     """))
     rejected_leaves = cur.fetchall()
     rejected_count = len(rejected_leaves)
+    
+    # ===== SUMMARY COUNTS =====
+    cur.execute("""
+        SELECT
+            COUNT(*) FILTER (WHERE status IN ('Pending Recommender','Pending Approval')) AS pending,
+            COUNT(*) FILTER (WHERE status='Approved') AS approved,
+            COUNT(*) FILTER (WHERE status='Rejected') AS rejected
+        FROM leave_applications
+    """)
+
+    summary = cur.fetchone()
+
+    pending_count = summary["pending"] or 0
+    approved_count = summary["approved"] or 0
+    rejected_count = summary["rejected"] or 0
 
     # ================== BAR GRAPH (Approved + Rejected per Month) ==================
-    cur.execute(
-        adapt_query("""SELECT
-                EXTRACT(YEAR FROM DATE(start_date)) AS year,
-                EXTRACT(MONTH FROM DATE(start_date)) AS month,
+    cur.execute("""SELECT
+            EXTRACT(YEAR FROM DATE(start_date)) AS year,
+            EXTRACT(MONTH FROM DATE(start_date)) AS month,
+            SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) AS approved,
+            SUM(CASE WHEN status='Rejected' THEN 1 ELSE 0 END) AS rejected
+        FROM leave_applications
+        WHERE status IN ('Approved','Rejected')
+        GROUP BY year, month
+        ORDER BY year, month
+    """)
 
-                SUM(CASE WHEN status = 'Approved' THEN 1 ELSE 0 END) AS approved,
-                SUM(CASE WHEN status = 'Rejected' THEN 1 ELSE 0 END) AS rejected
-
-            FROM leave_applications
-            WHERE status IN ('Approved','Rejected')
-
-            GROUP BY year, month
-            ORDER BY year, month
-        """)
-    )
-
-    stats = [dict(row) for row in cur.fetchall()]
+    stats = [dict(r) for r in cur.fetchall()]
+    years = sorted({int(row["year"]) for row in stats}) if stats else []
+    
     labels = []
     approved_data = []
     rejected_data = []
@@ -3192,7 +3204,8 @@ def ceo_dashboard():
         approved_count=approved_count,
         rejected_count=rejected_count,
         stats=stats,
-        # years=years,
+        labels=labels,
+        years=years,
         approved_data=approved_data,
         rejected_data=rejected_data,
         total_data=total_data,
