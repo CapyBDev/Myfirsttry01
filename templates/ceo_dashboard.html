@@ -302,6 +302,10 @@ const rawData = {{ stats|tojson }};
 const rawTrendData = {{ trend_raw|tojson }};
 const leaveTypes = {{ leave_types|tojson }};
 const leaveCounts = {{ leave_type_count|tojson }};
+const labels = {{ labels|tojson }};
+const approvedData = {{ approved_data|tojson }};
+const rejectedData = {{ rejected_data|tojson }};
+const totalData = {{ total_data|tojson }};
 
 // Month labels fixed JAN–DEC
 const monthOrder = ["01","02","03","04","05","06","07","08","09","10","11","12"];
@@ -319,13 +323,29 @@ new Chart(document.getElementById("typePieChart"),{
 
 /* ===== MAIN GROUPED BAR CHART ===== */
 const mainCtx = document.getElementById("leaveChart");
+
 let mainChart = new Chart(mainCtx,{
  type:"bar",
- data:{labels:[],datasets:[
-   {label:"Total Leave",backgroundColor:"#246ae1",data:[]},
-   {label:"Approved",backgroundColor:"#4ff68c",data:[]},
-   {label:"Rejected",backgroundColor:"#f72020",data:[]}
- ]},
+ data:{
+   labels: labels,
+   datasets:[
+     {
+       label:"Total Leave",
+       backgroundColor:"#246ae1",
+       data: totalData
+     },
+     {
+       label:"Approved",
+       backgroundColor:"#4ff68c",
+       data: approvedData
+     },
+     {
+       label:"Rejected",
+       backgroundColor:"#f72020",
+       data: rejectedData
+     }
+   ]
+ },
  options:{
   responsive:true,
   plugins:{legend:{position:"top"}},

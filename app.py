@@ -3119,23 +3119,37 @@ def ceo_dashboard():
 
     # ================== BAR GRAPH (Approved + Rejected per Month) ==================
     cur.execute(
-        adapt_query("""SELECT 
-            EXTRACT(YEAR FROM l.approved_at::date) AS year,
-            EXTRACT(MONTH FROM l.approved_at::date) AS month,
-            COALESCE(d.name,'Unknown') AS department,
-            l.leave_type,
-            SUM(CASE WHEN l.status='Approved' THEN 1 ELSE 0 END) AS approved,
-            SUM(CASE WHEN l.status='Rejected' THEN 1 ELSE 0 END) AS rejected
-        FROM leave_applications l
-        JOIN users u ON u.id = l.user_id
-        LEFT JOIN departments d ON u.department_id = d.id
-        WHERE l.status IN ('Approved','Rejected')
-        GROUP BY year, month, department, l.leave_type
-        ORDER BY year, month
-    """))
-    stats = [dict(row) for row in cur.fetchall()]
+        adapt_query("""SELECT
+                EXTRACT(YEAR FROM DATE(start_date)) AS year,
+                EXTRACT(MONTH FROM DATE(start_date)) AS month,
 
-    years = sorted({row["year"] for row in stats})
+                SUM(CASE WHEN status = 'Approved' THEN 1 ELSE 0 END) AS approved,
+                SUM(CASE WHEN status = 'Rejected' THEN 1 ELSE 0 END) AS rejected
+
+            FROM leave_applications
+            WHERE status IN ('Approved','Rejected')
+
+            GROUP BY year, month
+            ORDER BY year, month
+        """)
+    )
+
+    stats = [dict(row) for row in cur.fetchall()]
+    labels = []
+    approved_data = []
+    rejected_data = []
+    total_data = []
+
+    for row in stats:
+        label = f"{int(row['month']):02d}/{int(row['year'])}"
+        labels.append(label)
+
+        approved = row["approved"] or 0
+        rejected = row["rejected"] or 0
+
+        approved_data.append(approved)
+        rejected_data.append(rejected)
+        total_data.append(approved + rejected)
 
     # ================== TREND RAW DATA (for filters) ==================
     cur.execute(
@@ -3178,7 +3192,9 @@ def ceo_dashboard():
         approved_count=approved_count,
         rejected_count=rejected_count,
         stats=stats,
-        years=years,
+        approved_data=approved_data,
+        rejected_data=rejected_data,
+        total_data=total_data,
         trend_raw=trend_raw,
         leave_types=leave_types,
         leave_type_count=leave_type_count
