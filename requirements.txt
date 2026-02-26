@@ -7,3 +7,4 @@ reportLab
 pandas
 requests
 weasyprint
+pytz
