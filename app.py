@@ -684,7 +684,7 @@ def admin_dashboard():
         params.append(year_filter)
 
     if month_filter != "all":
-        conditions.append("EXTRACT(MONTH FROM DATE(1.start_date)) = %s")
+        conditions.append("EXTRACT(MONTH FROM DATE(l.start_date)) = %s")
         params.append(month_filter)
 
     if dept_filter != "all":
