@@ -5421,7 +5421,9 @@ def print_monthly_matrix_pdf():
     matrix_month = str(matrix_month).zfill(2)
 
     try:
-        first_day = datetime.strptime(f"{matrix_year}-{matrix_month}-01", "%Y-%m-%d")
+        first_day = datetime.strptime(
+            f"{matrix_year}-{matrix_month}-01", "%Y-%m-%d"
+        ).date()
     except ValueError:
         return "Invalid date format for matrix_month or matrix_year", 400
 
@@ -5436,10 +5438,10 @@ def print_monthly_matrix_pdf():
 
     # ================= LAST DAY =================
     if int(matrix_month) == 12:
-        last_day = datetime(int(matrix_year) + 1, 1, 1) - timedelta(days=1)
+        last_day = datetime(int(matrix_year) + 1, 1, 1).date() - timedelta(days=1)
     else:
-        last_day = datetime(int(matrix_year), int(matrix_month) + 1, 1) - timedelta(days=1)
-
+        last_day = datetime(int(matrix_year), int(matrix_month) + 1, 1).date() - timedelta(days=1)
+        
     conn = get_db()
     cur = conn.cursor()
 
@@ -5479,14 +5481,14 @@ def print_monthly_matrix_pdf():
         users.setdefault(uid, {"user_name": r["full_name"], "leaves": {}})
 
         if isinstance(r["start_date"], str):
-            start = datetime.strptime(r["start_date"], "%Y-%m-%d")
+            start = datetime.strptime(r["start_date"], "%Y-%m-%d").date()
         else:
-            start = r["start_date"]
+            start = r["start_date"].date()
 
         if isinstance(r["end_date"], str):
-            end = datetime.strptime(r["end_date"], "%Y-%m-%d")
+            end = datetime.strptime(r["end_date"], "%Y-%m-%d").date()
         else:
-            end = r["end_date"]
+            end = r["end_date"].date()
 
         cur_day = max(start, first_day)
         while cur_day <= min(end, last_day):
@@ -5525,6 +5527,9 @@ def print_monthly_matrix_pdf():
 
         start = normalize_date(m["start_date"])
         end   = normalize_date(m["end_date"])
+        
+        start = start.date() if isinstance(start, datetime) else start
+        end = end.date() if isinstance(end, datetime) else end
 
         start = max(start, first_day)
         end   = min(end, last_day)
