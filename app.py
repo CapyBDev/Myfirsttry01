@@ -3074,6 +3074,8 @@ def ceo_dashboard():
 
     conn = get_db()
     cur = conn.cursor()
+    
+    ceo_name = session.get("full_name")
 
     # ================== PENDING (CEO only) ==================
     cur.execute(
@@ -3083,6 +3085,7 @@ def ceo_dashboard():
         JOIN users u ON u.id = l.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.status = 'Pending Approval'
+          AND UPPER(TRIM(l.approver_name)) = 'CEO'
         ORDER BY l.id DESC
     """))
     pending_leaves = cur.fetchall()
@@ -3096,6 +3099,7 @@ def ceo_dashboard():
         JOIN users u ON u.id = l.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.status = 'Approved'
+          AND UPPER(TRIM(l.approver_name)) = 'CEO'
         ORDER BY l.approved_at DESC
     """))
     approved_leaves = cur.fetchall()
@@ -3109,19 +3113,32 @@ def ceo_dashboard():
         JOIN users u ON u.id = l.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.status = 'Rejected'
+          AND UPPER(TRIM(l.approver_name)) = 'CEO'
         ORDER BY l.approved_at DESC
     """))
     rejected_leaves = cur.fetchall()
     rejected_count = len(rejected_leaves)
     
-    # ===== SUMMARY COUNTS =====
+    # ===== SUMMARY COUNTS (CEO ONLY) =====
     cur.execute("""
         SELECT
-            COUNT(*) FILTER (WHERE status IN ('Pending Recommender','Pending Approval')) AS pending,
-            COUNT(*) FILTER (WHERE status='Approved') AS approved,
-            COUNT(*) FILTER (WHERE status='Rejected') AS rejected
+            COUNT(*) FILTER (
+                WHERE status = 'Pending Approval'
+                AND UPPER(TRIM(approver_name)) = UPPER(%s)
+            ) AS pending,
+
+            COUNT(*) FILTER (
+                WHERE status = 'Approved'
+                AND UPPER(TRIM(approver_name)) = UPPER(%s)
+            ) AS approved,
+
+            COUNT(*) FILTER (
+                WHERE status = 'Rejected'
+                AND UPPER(TRIM(approver_name)) = UPPER(%s)
+            ) AS rejected
+
         FROM leave_applications
-    """)
+    """, (ceo_name, ceo_name, ceo_name))
 
     summary = cur.fetchone()
 
