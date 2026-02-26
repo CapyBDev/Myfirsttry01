@@ -3083,7 +3083,6 @@ def ceo_dashboard():
         JOIN users u ON u.id = l.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.status = 'Pending Approval'
-          AND UPPER(TRIM(l.approver_name)) = 'CEO'
         ORDER BY l.id DESC
     """))
     pending_leaves = cur.fetchall()
@@ -3097,7 +3096,6 @@ def ceo_dashboard():
         JOIN users u ON u.id = l.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.status = 'Approved'
-          AND UPPER(TRIM(l.approver_name)) = 'CEO'
         ORDER BY l.approved_at DESC
     """))
     approved_leaves = cur.fetchall()
@@ -3111,7 +3109,6 @@ def ceo_dashboard():
         JOIN users u ON u.id = l.user_id
         LEFT JOIN departments d ON u.department_id = d.id
         WHERE l.status = 'Rejected'
-          AND UPPER(TRIM(l.approver_name)) = 'CEO'
         ORDER BY l.approved_at DESC
     """))
     rejected_leaves = cur.fetchall()
