@@ -516,6 +516,15 @@ def auto_reset_mc_availability():
     conn.commit()
     conn.close()
 
+from datetime import datetime
+import pytz
+
+malaysia_tz = pytz.timezone("Asia/Kuala_Lumpur")
+now_local = datetime.now(malaysia_tz)
+
+formatted_time = now_local.strftime("%d-%m-%Y %I:%M %p")
+created_at = now_local.strftime("%d-%m-%Y %I:%M %p")
+
 @app.before_request
 def before_any_request():
     auto_reset_mc_availability()
@@ -1618,9 +1627,9 @@ def upload_mc():
         conn.close()
         flash("Jenis fail tidak dibenarkan. Gunakan PDF/PNG/JPG.", "danger")
         return redirect(url_for("manage_users"))
-
+#1
     # Save file
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    timestamp = formatted_time
     save_name = f"mc_{user_id}_{timestamp}_{filename}"
     save_path = os.path.join(LEAVE_UPLOAD_FOLDER, save_name)
     try:
@@ -3246,7 +3255,7 @@ def ceo_approve_leave(leave_id):
         SET status='Approved',
             approved_at=%s
         WHERE id=%s
-    """), (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
+    """), (formatted_time, leave_id))
 
     if leave["leave_type"] != "MC":
         cur.execute(
@@ -3274,11 +3283,12 @@ def ceo_reject_leave(leave_id):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(adapt_query("""UPDATE leave_applications
+    cur.execute(
+        adapt_query("""UPDATE leave_applications
         SET status='Rejected',
             approved_at=%s
         WHERE id=%s
-    """), (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
+    """), (formatted_time, leave_id))
 
     conn.commit()
     conn.close()
@@ -3468,8 +3478,8 @@ def user_upload_mc():
     if ext not in {"pdf", "png", "jpg", "jpeg"}:
         flash("Invalid MC file type.", "danger")
         return redirect(url_for("user_dashboard"))
-
-    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+#2
+    ts = formatted_time
     save_name = f"mc_{session['user_id']}_{ts}_{filename}"
     file.save(os.path.join(LEAVE_UPLOAD_FOLDER, save_name))
 
@@ -3631,7 +3641,7 @@ def apply_leave():
             status,
             checker_name,
             approver_name,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            created_at
         ))
 
         conn.commit()
@@ -3737,8 +3747,8 @@ def check_leave_action(leave_id):
         SET status='Pending Approval',
             checked_at=%s
         WHERE id=%s
-    """), (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
-
+    """), (formatted_time, leave_id))
+#3
     conn.commit()
     conn.close()
 
@@ -3773,8 +3783,8 @@ def approve_leave_action(leave_id):
         SET status='Approved',
             approved_at=%s
         WHERE id=%s
-    """), (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
-
+    """), (formatted_time, leave_id))
+#4
     conn.commit()
     conn.close()
 
@@ -3810,7 +3820,7 @@ def reject_leave_action(leave_id):
         SET status='Rejected',
             approved_at=%s
         WHERE id=%s
-    """), (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), leave_id))
+    """), (formatted_time, leave_id))
 
     conn.commit()
     conn.close()
