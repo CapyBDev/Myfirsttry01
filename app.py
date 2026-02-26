@@ -3119,26 +3119,26 @@ def ceo_dashboard():
     rejected_leaves = cur.fetchall()
     rejected_count = len(rejected_leaves)
     
-    # ===== SUMMARY COUNTS (CEO ONLY) =====
+    # ===== SUMMARY COUNTS =====
     cur.execute("""
         SELECT
             COUNT(*) FILTER (
                 WHERE status = 'Pending Approval'
-                AND UPPER(TRIM(approver_name)) = UPPER(%s)
+                AND UPPER(TRIM(approver_name)) = 'CEO'
             ) AS pending,
 
             COUNT(*) FILTER (
                 WHERE status = 'Approved'
-                AND UPPER(TRIM(approver_name)) = UPPER(%s)
+                AND UPPER(TRIM(approver_name)) = 'CEO'
             ) AS approved,
 
             COUNT(*) FILTER (
                 WHERE status = 'Rejected'
-                AND UPPER(TRIM(approver_name)) = UPPER(%s)
+                AND UPPER(TRIM(approver_name)) = 'CEO'
             ) AS rejected
 
         FROM leave_applications
-    """, (ceo_name, ceo_name, ceo_name))
+    """)
 
     summary = cur.fetchone()
 
