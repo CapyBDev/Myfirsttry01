@@ -5483,12 +5483,12 @@ def print_monthly_matrix_pdf():
         if isinstance(r["start_date"], str):
             start = datetime.strptime(r["start_date"], "%Y-%m-%d").date()
         else:
-            start = r["start_date"].date()
+            start = normalize_date(r["start_date"])
 
         if isinstance(r["end_date"], str):
             end = datetime.strptime(r["end_date"], "%Y-%m-%d").date()
         else:
-            end = r["end_date"].date()
+            end = normalize_date(r["end_date"])
 
         cur_day = max(start, first_day)
         while cur_day <= min(end, last_day):
@@ -5612,3 +5612,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
     
+
