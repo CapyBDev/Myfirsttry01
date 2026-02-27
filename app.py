@@ -5605,8 +5605,8 @@ def print_monthly_matrix_pdf():
         mimetype="application/pdf"
     )
 
-with app.app_context():
-    init_db()
+# with app.app_context():
+#     init_db()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
