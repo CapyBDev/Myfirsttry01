@@ -239,8 +239,11 @@ input.form-control:focus {
         <div class="text-center">
           <div style="width:100%; max-height:500px;">
             <img id="cropImage"
-                src="{{ url_for('static', filename='uploads/profile_photos/' + (user.profile_photo or '')) }}"
-                onerror="this.src='https://ui-avatars.com/api/?name={{ user.full_name }}&background=random'">
+                src="{% if user.profile_photo %}
+                        {{ url_for('static', filename='uploads/profile_photos/' + user.profile_photo) }}
+                      {% else %}
+                        https://ui-avatars.com/api/?name={{ user.full_name }}&background=random
+                      {% endif %}"
           </div>
         </div>
 

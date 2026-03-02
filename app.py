@@ -1600,7 +1600,7 @@ def upload_mc():
     pdf = request.files.get("mc_pdf")
 
     if not user_id:
-        flash("Sila pilih pengguna untuk MC.", "warning")
+        flash("Choose MC used.", "warning")
         return redirect(url_for("manage_users"))
 
     # Validate user exists
@@ -1612,12 +1612,12 @@ def upload_mc():
     )
     if not c.fetchone():
         conn.close()
-        flash("Pengguna tidak ditemui.", "danger")
+        flash("User not found.", "danger")
         return redirect(url_for("manage_users"))
 
     if not pdf or pdf.filename == "":
         conn.close()
-        flash("Sila muat naik fail MC (PDF/JPG/PNG).", "warning")
+        flash("Please upload MC (PDF/JPG/PNG).", "warning")
         return redirect(url_for("manage_users"))
 
     # Validate extension
@@ -1625,7 +1625,7 @@ def upload_mc():
     ext = filename.rsplit(".", 1)[-1].lower()
     if ext not in ALLOWED_LEAVE_EXTENSIONS:
         conn.close()
-        flash("Jenis fail tidak dibenarkan. Gunakan PDF/PNG/JPG.", "danger")
+        flash("File not supported. Gunakan PDF/PNG/JPG.", "danger")
         return redirect(url_for("manage_users"))
 #1
     # Save file
@@ -1636,7 +1636,7 @@ def upload_mc():
         pdf.save(save_path)
     except Exception as e:
         conn.close()
-        flash("Gagal simpan fail: " + str(e), "danger")
+        flash("Failed to save file: " + str(e), "danger")
         return redirect(url_for("manage_users"))
 
     # Insert MC record + set availability to Out
@@ -1651,10 +1651,10 @@ def upload_mc():
             ("Out", user_id)
         )
         conn.commit()
-        flash("MC berjaya dimuat naik dan status pengguna dikemaskini.", "success")
+        flash("Successfully uploaded.", "success")
     except Exception as e:
         conn.rollback()
-        flash("Gagal simpan rekod MC: " + str(e), "danger")
+        flash("Record Failed: " + str(e), "danger")
     finally:
         conn.close()
 
@@ -3962,6 +3962,8 @@ def update_profile_photo():
     )
     conn.commit()
     conn.close()
+    
+    session["profile_photo"] = filename
 
     image_url = url_for("static", filename="uploads/profile_photos/" + filename)
 
