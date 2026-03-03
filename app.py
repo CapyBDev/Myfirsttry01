@@ -535,50 +535,42 @@ def home():
     if "user_id" in session:
         return redirect(url_for("admin_dashboard" if session.get("role") == "admin" else "user_dashboard"))
     return redirect(url_for("login"))
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
-
-    if "login_attempts" not in session:
-        session["login_attempts"] = 0
 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
-
-        if session["login_attempts"] >= 3:
-            flash("Too many failed attempts. Please use 'Forgot password / username'.", "warning")
-            return redirect(url_for("login"))
-
         conn = get_db()
         c = conn.cursor()
+
         c.execute(
-            adapt_query("SELECT * FROM users WHERE username=%s"), 
+            adapt_query("SELECT * FROM users WHERE username=%s"),
             (username,)
         )
         user = c.fetchone()
-        conn.close()
 
-        # User not found
+        #  User not found
         if not user:
-            session["login_attempts"] += 1
             flash("Invalid username or password.", "danger")
+            conn.close()
             return redirect(url_for("login"))
 
-        # User resigned (treated as not exist)
+        # User resigned
         if user["availability"] == "Resign":
             flash("Your account is no longer active. Please contact admin.", "danger")
+            conn.close()
             return redirect(url_for("login"))
 
         # Wrong password
         if not check_password_hash(user["password_hash"], password):
-            session["login_attempts"] += 1
             flash("Invalid username or password.", "danger")
+            conn.close()
             return redirect(url_for("login"))
 
-        # success
-        session["login_attempts"] = 0
+        #  SUCCESS LOGIN
+        session.clear()   
         session.update({
             "user_id": user["id"],
             "username": user["username"],
@@ -588,21 +580,84 @@ def login():
             "profile_photo": user["profile_photo"]
         })
 
+        conn.close()
+
         flash("Login success. Welcome back!", "success")
 
         if user["role"] == "admin":
             return redirect(url_for("admin_dashboard"))
-
         elif (user["position"] or "").upper() == "CEO":
             return redirect(url_for("ceo_dashboard"))
-
         else:
             return redirect(url_for("user_dashboard"))
 
-    return render_template(
-        "login.html",
-        show_forgot=session.get("login_attempts", 0) >= 3
-    )
+    return render_template("login.html")
+
+
+# @app.route("/login", methods=["GET", "POST"])
+# def login():
+
+#     if request.method == "POST":
+#         username = request.form.get("username", "").strip()
+#         password = request.form.get("password", "")
+
+
+#         if session["login_attempts"] >= 3:
+#             flash("Too many failed attempts. Please use 'Forgot password / username'.", "warning")
+#             return redirect(url_for("login"))
+
+#         conn = get_db()
+#         c = conn.cursor()
+#         c.execute(
+#             adapt_query("SELECT * FROM users WHERE username=%s"), 
+#             (username,)
+#         )
+#         user = c.fetchone()
+#         conn.close()
+
+#         # User not found
+#         if not user:
+#             session["login_attempts"] += 1
+#             flash("Invalid username or password.", "danger")
+#             return redirect(url_for("login"))
+
+#         # User resigned (treated as not exist)
+#         if user["availability"] == "Resign":
+#             flash("Your account is no longer active. Please contact admin.", "danger")
+#             return redirect(url_for("login"))
+
+#         # Wrong password
+#         if not check_password_hash(user["password_hash"], password):
+#             session["login_attempts"] += 1
+#             flash("Invalid username or password.", "danger")
+#             return redirect(url_for("login"))
+
+#         # success
+#         session["login_attempts"] = 0
+#         session.update({
+#             "user_id": user["id"],
+#             "username": user["username"],
+#             "full_name": user["full_name"],
+#             "role": user["role"],
+#             "position": user["position"],
+#             "profile_photo": user["profile_photo"]
+#         })
+
+#         flash("Login success. Welcome back!", "success")
+
+#         if user["role"] == "admin":
+#             return redirect(url_for("admin_dashboard"))
+
+#         elif (user["position"] or "").upper() == "CEO":
+#             return redirect(url_for("ceo_dashboard"))
+
+#         else:
+#             return redirect(url_for("user_dashboard"))
+
+#     return render_template(
+#         "login.html",
+#         show_forgot=session.get("login_attempts", 0) >= 3
+#     )
 
 @app.route("/logout")
 def logout():
@@ -3967,7 +4022,7 @@ def update_profile_photo():
 
     image_url = url_for("static", filename="uploads/profile_photos/" + filename)
 
-    print("IMAGE SAVED:", image_url)  # DEBUG
+    print("IMAGE SAVED:", image_url) 
 
     return jsonify({"url": image_url})
 
