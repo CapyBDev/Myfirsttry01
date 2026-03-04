@@ -1,29 +1,35 @@
 import html
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 import sqlite3
-from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date
 import os
 import csv
 import io
-# import mysql.connector
-from datetime import timedelta, datetime
-from flask import send_file , Response 
-from functools import wraps
-from werkzeug.utils import secure_filename
-# === REPORT / EXPORT ===
-from openpyxl import Workbook
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from weasyprint import HTML, CSS
-from uuid import uuid4
-from reportlab.lib.pagesizes import A4, landscape
 import smtplib
-from email.message import EmailMessage
-from uuid import uuid4
-from datetime import datetime, timedelta
-from werkzeug.security import generate_password_hash, check_password_hash
+import pandas as pd
 
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
+from flask import send_file , Response 
+from io import BytesIO
+
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+
+from datetime import datetime, date, timedelta
+
+from uuid import uuid4
+
+from weasyprint import HTML, CSS
+from functools import wraps
+
+from openpyxl import Workbook
+
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+
+from email.message import EmailMessage
 
 PAGE_SIZE = landscape(A4)
 
@@ -35,19 +41,17 @@ else:
     app.secret_key = os.environ.get("SECRET_KEY")
 
 
-#leave upload
 LEAVE_UPLOAD_FOLDER = os.path.join("static", "uploads", "leave_docs")
 os.makedirs(LEAVE_UPLOAD_FOLDER, exist_ok=True)
 
 ALLOWED_LEAVE_EXTENSIONS = {"png", "jpg", "jpeg", "pdf"}
 
-# === Upload config untuk profile photo ===
+
 PROFILE_UPLOAD_FOLDER = os.path.join("static", "uploads", "profile_photos")
 app.config["PROFILE_UPLOAD_FOLDER"] = PROFILE_UPLOAD_FOLDER
 os.makedirs(PROFILE_UPLOAD_FOLDER, exist_ok=True)
 
 
-# file types allowed for profile photos
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif"}
 
 app.config["PROFILE_UPLOAD_FOLDER"] = PROFILE_UPLOAD_FOLDER
@@ -125,7 +129,6 @@ def get_used_leave_days(user_id, year=None):
     conn.close()
 
     return used
-
 
 def get_next_position(position):
     """Return next higher position for approval or checking chain."""
@@ -269,7 +272,7 @@ def init_db():
             FOREIGN KEY (performed_by) REFERENCES users(id)
         )
     """))
-    # 🌿 NEW: Leave Applications table (for workflow with checker & approver)
+    #  Leave Applications table (for workflow with checker & approver)
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS leave_applications (
             id SERIAL PRIMARY KEY,
@@ -293,7 +296,7 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     """))
-        # NEW: MC records table (medical certificates)
+        # MC records table (medical certificates)
     c.execute(
         adapt_query("""CREATE TABLE IF NOT EXISTS mc_records (
             id SERIAL PRIMARY KEY,
@@ -339,7 +342,7 @@ def init_db():
     add_col_if_not_exists("reset_token_expiry", "TEXT")
 
 
-    # 🌿 NEW: Safely add columns to the leaves table
+    # Safely add columns to the leaves table
     def add_leaves_col_if_not_exists(colname, coldef):
         try:
             c.execute(adapt_query(f"ALTER TABLE leaves ADD COLUMN {colname} {coldef}"))
@@ -349,7 +352,6 @@ def init_db():
     add_leaves_col_if_not_exists("contact_address", "TEXT")
     add_leaves_col_if_not_exists("contact_phone", "TEXT")
     add_leaves_col_if_not_exists("notes", "TEXT")
-    # add_leaves_col_if_not_exists("next_approver", "TEXT")
     add_leaves_col_if_not_exists("checked_by_position", "TEXT")
     add_leaves_col_if_not_exists("checked_status", "TEXT DEFAULT 'Pending'")
     add_leaves_col_if_not_exists("next_approver_position", "TEXT")
@@ -593,71 +595,6 @@ def login():
 
     return render_template("login.html")
 
-
-# @app.route("/login", methods=["GET", "POST"])
-# def login():
-
-#     if request.method == "POST":
-#         username = request.form.get("username", "").strip()
-#         password = request.form.get("password", "")
-
-
-#         if session["login_attempts"] >= 3:
-#             flash("Too many failed attempts. Please use 'Forgot password / username'.", "warning")
-#             return redirect(url_for("login"))
-
-#         conn = get_db()
-#         c = conn.cursor()
-#         c.execute(
-#             adapt_query("SELECT * FROM users WHERE username=%s"), 
-#             (username,)
-#         )
-#         user = c.fetchone()
-#         conn.close()
-
-#         # User not found
-#         if not user:
-#             session["login_attempts"] += 1
-#             flash("Invalid username or password.", "danger")
-#             return redirect(url_for("login"))
-
-#         # User resigned (treated as not exist)
-#         if user["availability"] == "Resign":
-#             flash("Your account is no longer active. Please contact admin.", "danger")
-#             return redirect(url_for("login"))
-
-#         # Wrong password
-#         if not check_password_hash(user["password_hash"], password):
-#             session["login_attempts"] += 1
-#             flash("Invalid username or password.", "danger")
-#             return redirect(url_for("login"))
-
-#         # success
-#         session["login_attempts"] = 0
-#         session.update({
-#             "user_id": user["id"],
-#             "username": user["username"],
-#             "full_name": user["full_name"],
-#             "role": user["role"],
-#             "position": user["position"],
-#             "profile_photo": user["profile_photo"]
-#         })
-
-#         flash("Login success. Welcome back!", "success")
-
-#         if user["role"] == "admin":
-#             return redirect(url_for("admin_dashboard"))
-
-#         elif (user["position"] or "").upper() == "CEO":
-#             return redirect(url_for("ceo_dashboard"))
-
-#         else:
-#             return redirect(url_for("user_dashboard"))
-
-#     return render_template(
-#         "login.html",
-#         show_forgot=session.get("login_attempts", 0) >= 3
-#     )
 
 @app.route("/logout")
 def logout():
@@ -974,7 +911,7 @@ def download_employee_leave_report(user_id):
         leave_types=leave_types,
         approved_leaves=approved_leaves,
         mc_records=mc_records,
-        pdf_mode=True   # optional flag if needed
+        pdf_mode=True  
     )
 
     pdf = HTML(string=html, base_url=request.root_url).write_pdf()
@@ -1724,7 +1661,7 @@ def mc_trend_api():
     c = conn.cursor()
 
     if view == "weekly":
-        # 🗓️ Last 7 days (including today)
+        # Last 7 days (including today)
         c.execute(
             adapt_query("""SELECT 
                 TO_CHAR(DATE(created_at), 'DD/MM') AS label,
@@ -1735,7 +1672,7 @@ def mc_trend_api():
             ORDER BY DATE(created_at)
         """))
     else:
-        # 🗓️ Last 6 months
+        # Last 6 months
         c.execute(
             adapt_query("""SELECT 
                 TO_CHAR(DATE(created_at), 'MM/YYYY') AS label,
@@ -1886,7 +1823,7 @@ def update_user_details(user_id):
 
     dept_id = request.form.get("dept_id")
 
-    # ✅ if admin did NOT select new department, keep old one
+    # if admin did NOT select new department, keep old one
     if not dept_id:
         c.execute(
             adapt_query("SELECT department_id FROM users WHERE id=%s"), 
@@ -2231,284 +2168,6 @@ def manage_leaves():
         year_range=year_range
     )
 
-# @app.route("/manage_leaves")
-# def manage_leaves():
-#     from datetime import datetime, timedelta
-
-#     conn = get_db()
-#     cur = conn.cursor()
-
-#     current_year = datetime.now().year
-#     start_year = current_year - 5
-#     year_range = list(range(start_year, current_year + 1))
-
-#     # =======================
-#     # LEAVE REPORT FILTERS
-#     # =======================
-#     report_year = request.args.get("year", str(current_year))
-#     selected_department = request.args.get("department", "all")
-#     action = request.args.get("action")
-
-#     should_build_report = action == "filter"
-
-#     # =======================
-#     # MONTHLY MATRIX FILTERS
-#     # =======================
-#     selected_month = request.args.get("matrix_month", datetime.now().strftime("%m"))
-#     matrix_year = request.args.get("matrix_year", str(current_year))
-#     selected_dept = request.args.get("matrix_department", "all")
-
-#     # =======================
-#     # DEPARTMENTS
-#     # =======================
-#     cur.execute(
-#         adapt_query("SELECT id, name FROM departments ORDER BY name"))
-#     departments = cur.fetchall()
-
-#     # =======================
-#     # LEAVE REPORT
-#     # =======================
-#     leave_report = []
-
-#     MONTH_MAP = {
-#         "01":"JAN","02":"FEB","03":"MAR","04":"APR",
-#         "05":"MAY","06":"JUN","07":"JUL","08":"AUG",
-#         "09":"SEP","10":"OCT","11":"NOV","12":"DEC"
-#     }
-
-#     if should_build_report:
-#         params = [report_year]
-#         dept_filter = ""
-
-#         if selected_department != "all":
-#             dept_filter = "AND d.name = %s"
-#             params.append(selected_department)
-
-#         cur.execute(
-#             adapt_query(f"""SELECT u.id AS user_id,
-#                 u.full_name,
-#                 la.leave_type,
-#                 la.start_date,
-#                 la.end_date,
-#                 u.entitlement
-#             FROM leave_applications la
-#             JOIN users u ON u.id = la.user_id
-#             LEFT JOIN departments d ON u.department_id = d.id
-#             WHERE la.status = 'Approved'
-#             AND EXTRACT(YEAR FROM DATE(la.start_date)) = %s
-#             {dept_filter}
-#             ORDER BY u.full_name, la.start_date
-#         """), params
-#         )
-
-#         rows = cur.fetchall()
-#         users = {}
-
-#         for r in rows:
-#             uid = r["user_id"]
-
-#             # ===== INIT USER (FIXED ENTITLEMENT) =====
-#             if uid not in users:
-#                 users[uid] = {
-#                     "user_id": uid,
-#                     "name": r["full_name"],
-#                     "entitlement": r["entitlement"] or 0,
-#                     "total_used": 0,
-#                     "monthly": {m: 0 for m in MONTH_MAP.values()},
-#                     "monthly_details": {},
-#                     "leave_type_details": {}
-#                 }
-
-#             if r["leave_type"] == "MC":
-#                 continue
-
-#             # ===== CALCULATE WORKING DAYS =====
-#             days = calculate_working_days(r["start_date"], r["end_date"])
-
-#             if isinstance(r["start_date"], str):
-#                 start = datetime.strptime(r["start_date"], "%Y-%m-%d")
-#             else:
-#                 start = r["start_date"]
-
-#             m = MONTH_MAP[start.strftime("%m")]
-
-#             # ===== ACCUMULATE USED =====
-#             users[uid]["monthly"][m] += days
-#             users[uid]["total_used"] += days
-
-#             # ===== MONTHLY DETAILS =====
-#             users[uid]["monthly_details"].setdefault(m, {})
-#             users[uid]["monthly_details"][m].setdefault(r["leave_type"], [])
-#             users[uid]["monthly_details"][m][r["leave_type"]].append({
-#                 "start": r["start_date"],
-#                 "end": r["end_date"],
-#                 "days": days
-#             })
-
-#             # ===== LEAVE TYPE DETAILS =====
-#             users[uid]["leave_type_details"].setdefault(r["leave_type"], [])
-#             users[uid]["leave_type_details"][r["leave_type"]].append({
-#                 "start": r["start_date"],
-#                 "end": r["end_date"],
-#                 "days": days
-#             })
-
-#         # ===== FINAL BALANCE CALCULATION (SAFE) =====
-#         for u in users.values():
-#             u["remaining"] = max(0, u["entitlement"] - u["total_used"])
-
-#         leave_report = list(users.values())
-
-#     # =========================================================
-#     # MONTHLY LEAVE MATRIX (FIXED WITH MC)
-#     # =========================================================
-#     monthly_matrix = []
-
-#     first_day = datetime.strptime(
-#         f"{matrix_year}-{selected_month}-01", "%Y-%m-%d"
-#     )
-
-#     if selected_month == "12":
-#         last_day = datetime.strptime(
-#             f"{int(matrix_year)+1}-01-01", "%Y-%m-%d"
-#         ) - timedelta(days=1)
-#     else:
-#         last_day = datetime.strptime(
-#             f"{matrix_year}-{int(selected_month)+1:02d}-01", "%Y-%m-%d"
-#         ) - timedelta(days=1)
-
-#     users = {}
-
-#     params = [last_day.strftime("%Y-%m-%d"), first_day.strftime("%Y-%m-%d")]
-#     dept_filter = ""
-
-#     if selected_dept != "all":
-#         dept_filter = "AND d.name = %s"
-#         params.append(selected_dept)
-
-#     # ===== APPROVED LEAVES =====
-#     cur.execute(
-#         adapt_query(f"""SELECT
-#             la.user_id,
-#             u.full_name,
-#             la.leave_type,
-#             la.start_date,
-#             la.end_date
-#         FROM leave_applications la
-#         JOIN users u ON u.id = la.user_id
-#         LEFT JOIN departments d ON u.department_id = d.id
-#         WHERE la.status='Approved'
-#         AND DATE(la.start_date) <= %s
-#         AND DATE(la.end_date) >= %s
-#         {dept_filter}
-#         ORDER BY u.full_name
-#     """), params
-#     )
-
-#     rows = cur.fetchall()
-
-#     for r in rows:
-#         uid = r["user_id"]
-#         users.setdefault(uid, {
-#             "user_name": r["full_name"],
-#             "leaves": {}
-#         })
-
-#         if isinstance(r["start_date"], str):
-#             start = datetime.strptime(r["start_date"], "%Y-%m-%d")
-#         else:
-#             start = r["start_date"]
-
-#         if isinstance(r["end_date"], str):
-#             end = datetime.strptime(r["end_date"], "%Y-%m-%d")
-#         else:
-#             end = r["end_date"]
-
-#         cur_day = max(start, first_day)
-#         while cur_day <= min(end, last_day):
-#             users[uid]["leaves"][cur_day.strftime("%d")] = r["leave_type"]
-#             cur_day += timedelta(days=1)
-
-
-#     # ===== MC RECORDS (FIXED) =====
-#     params = [last_day.strftime("%Y-%m-%d"), first_day.strftime("%Y-%m-%d")]
-#     dept_filter = ""
-
-#     if selected_dept != "all":
-#         dept_filter = "AND d.name = %s"
-#         params.append(selected_dept)
-
-#     cur.execute(
-#         adapt_query(f"""SELECT
-#             m.user_id,
-#             u.full_name,
-#             m.start_date,
-#             m.end_date
-#         FROM mc_records m
-#         JOIN users u ON u.id = m.user_id
-#         LEFT JOIN departments d ON u.department_id = d.id
-#         WHERE DATE(m.start_date) <= %s
-#         AND DATE(m.end_date) >= %s
-#         {dept_filter}
-#     """), params
-#     )
-
-#     mc_rows = cur.fetchall()
-
-#     for m in mc_rows:
-#         uid = m["user_id"]
-#         users.setdefault(uid, {
-#             "user_name": m["full_name"],
-#             "leaves": {}
-#         })
-
-#         start = datetime.strptime(m["start_date"], "%Y-%m-%d")
-#         end   = datetime.strptime(m["end_date"], "%Y-%m-%d")
-
-#         cur_day = max(start, first_day)
-#         while cur_day <= min(end, last_day):
-#             users[uid]["leaves"][cur_day.strftime("%d")] = "MC"
-#             cur_day += timedelta(days=1)
-
-#     monthly_matrix = list(users.values())
-
-
-#     # =======================
-#     # COMPLETED LIST
-#     # =======================
-#     cur.execute(
-#         adapt_query("""
-#         SELECT la.id, la.full_name,
-#                COALESCE(d.name,'') AS department_name,
-#                la.leave_type, la.start_date, la.end_date,
-#                la.status, la.approver_name
-#         FROM leave_applications la
-#         LEFT JOIN users u ON u.id=la.user_id
-#         LEFT JOIN departments d ON u.department_id=d.id
-#         WHERE la.status IN ('Approved','Rejected')
-#         ORDER BY la.start_date DESC
-#     """))
-#     completed = cur.fetchall()
-
-#     conn.close()
-
-#     return render_template(
-#         "manage_leaves.html",
-#         leave_report=leave_report,
-#         selected_year=report_year,
-#         selected_department=selected_department,
-
-#         monthly_matrix=monthly_matrix,
-#         selected_month=selected_month,
-#         selected_year_matrix=matrix_year,
-#         selected_dept=selected_dept,
-
-#         completed=completed,
-#         departments=departments,
-#         year_range=year_range
-#     )
-
-
 MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"]
 
 from weasyprint import HTML
@@ -2649,7 +2308,7 @@ def build_leave_matrix(rows):
         leave["months"][month_name] += r["days_used"]
         leave["total_used"] += r["days_used"]
 
-    # ✅ FINAL CALCULATION (SAFE)
+    # FINAL CALCULATION (SAFE)
     for u in report.values():
         used = sum(l["total_used"] for l in u["leaves"])
         u["remaining"] = max(0, u["entitlement"] - used)
@@ -3362,7 +3021,7 @@ def user_dashboard():
     conn = get_db()
     c = conn.cursor()
 
-    # 🟦 Get and normalize user position
+    # Get and normalize user position
     c.execute(
         adapt_query("SELECT position FROM users WHERE id=%s"), 
         (user_id,)
@@ -3832,7 +3491,7 @@ def approve_leave_action(leave_id):
         flash("Leave already processed.", "warning")
         return redirect(url_for("approval_dashboard"))
 
-    # ✅ Approve
+    # Approve
     c.execute(
         adapt_query("""UPDATE leave_applications
         SET status='Approved',
@@ -3910,7 +3569,7 @@ def calendar():
         adapt_query("SELECT name, date FROM holidays ORDER BY date"))
     holidays = c.fetchall()
 
-    # 🔹 Upcoming leaves for this user only
+    # Upcoming leaves for this user only
     c.execute(
         adapt_query("""SELECT l.id, l.start_date, l.end_date, u.full_name, l.leave_type, l.status
         FROM leaves l
@@ -3922,7 +3581,7 @@ def calendar():
     )
     leaves = c.fetchall()
 
-    # 🔹 Leave history (past leaves for this user only)
+    # Leave history (past leaves for this user only)
     c.execute(
         adapt_query("""SELECT l.id, l.start_date, l.end_date, u.full_name, l.leave_type, l.status
         FROM leaves l
@@ -4273,7 +3932,6 @@ def get_departments():
 @app.route("/leave_docs/<path:filename>")
 @login_required
 def leave_docs(filename):
-    # Semua user login boleh view, kalau nak stricter, check role sini
     return send_from_directory(LEAVE_UPLOAD_FOLDER, filename)
 
 import smtplib
@@ -4317,7 +3975,6 @@ def send_email(to_email, subject, message):
 
 def send_whatsapp(phone, message):
     print(f"WhatsApp sent to {phone}: {message}")
-    # Integrate Twilio / Fonnte later here
 
 @app.route("/leave/file/<filename>")
 @login_required
@@ -4748,11 +4405,11 @@ def build_employee_leave_matrix(leaves, year):
     total_used = 0
 
     for l in leaves:
-        # ✅ FIX 1
+        # FIX 1
         if l["status"] != "Approved":
             continue
 
-        # ✅ FIX 2
+        # FIX 2
         start = datetime.strptime(l["start_date"], "%Y-%m-%d").date()
         end   = datetime.strptime(l["end_date"], "%Y-%m-%d").date()
 
@@ -4762,7 +4419,7 @@ def build_employee_leave_matrix(leaves, year):
 
             m = months[d.month - 1]
 
-            # ✅ FIX 3
+            # FIX 3
             monthly[m][l["leave_type"]] += 1
 
             monthly_details[m][l["leave_type"]].append({
@@ -4770,7 +4427,7 @@ def build_employee_leave_matrix(leaves, year):
                 "days": 1
             })
 
-            # ✅ FIX 4
+            # FIX 4
             if l["leave_type"] != "MC":
                 total_used += 1
 
@@ -4779,15 +4436,6 @@ def build_employee_leave_matrix(leaves, year):
         "monthly_details": monthly_details,
         "total_used": total_used
     }
-    
-from flask import render_template, request, send_file
-from datetime import datetime
-import pandas as pd
-from io import BytesIO
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
 
 @app.route("/team_leave_report")
 @admin_required
@@ -5244,7 +4892,7 @@ def team_leave_pdf():
         printed_date=date.today().strftime("%d-%m-%Y"),
         days_in_month=days_in_month,
         current_year=datetime.now().year,
-        pdf_mode=True   # IMPORTANT
+        pdf_mode=True   
     )
 
     pdf = HTML(string=html, base_url=request.root_url).write_pdf()
